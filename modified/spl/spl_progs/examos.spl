@@ -1,0 +1,135 @@
+//exhandler
+load(7,1);  
+load(8,2);
+
+//interrupt1
+
+load(11,5);
+load(12,6);
+
+//interrupt2
+
+load(13,7);
+load(14,8);
+
+//interrupt3
+load(15,9);
+load(16,10);
+
+//interrupt4
+
+load(17,11);
+load(18,12);
+
+//interrupt5
+
+load(19,13);
+load(20,14);
+
+//interrupt6
+
+load(21,15);
+load(22,16);
+
+//interrupt7
+load(23,17); 
+load(24,18);
+
+//FAT and DF-list
+load(5,19);
+load(6,20);
+
+//timerinterrupt
+load(9,3);
+load(10,4);
+
+[READY_LIST + 0] = 0;
+
+PTBR = 1024;
+PTLR = 5;
+
+[PTBR + 0] = 21; // disk block  Number for Logical Page 0
+[PTBR + 1] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 2] = 22; // disk block Number for Logical Page 1
+[PTBR + 3] = "00"; // Auxiliary Information for Logical Page 1
+[PTBR + 4] = 23; // disk block Number for Logical Page 2
+[PTBR + 5] = "00"; // Auxiliary Information for Logical Page 2
+[PTBR + 6] = 24; // disk block Number for Logical Page 2
+[PTBR + 7] = "00"; // Auxiliary Information for Logical Page 2
+[PTBR + 8] = 29; // Physical Page Number for stack
+[PTBR + 9] = "01"; // Auxiliary Information for stack
+
+alias counter S0;			
+counter = 0;
+while ( counter <  128) do			// 64 entries, each of size 2 words
+	[ FILE_TABLE + counter + 0] = -1;	// Set FAT Index to -1
+	[ FILE_TABLE + counter + 1] =  0;	// Set File Open Count to 0
+	counter = counter + 2;			// Move to next entry
+endwhile;
+
+
+alias temp S1;
+temp=0;
+
+while(temp<=24)
+do
+	[temp+1280+0]=1;
+	temp=temp+1;
+endwhile;
+
+[MEM_LIST+25]=0;
+[MEM_LIST+26]=0;
+[MEM_LIST+27]=0;
+[MEM_LIST+28]=0;
+[MEM_LIST+29]=1;
+
+
+temp=30;
+
+while(temp<=63)
+do
+[temp+MEM_LIST+0]=0;
+temp=temp+1;
+endwhile;
+
+
+temp=0;
+
+while(temp<25)
+do
+[READY_LIST+temp*32+1]=0;  	 //set pcb state as 0
+temp=temp+1;
+endwhile;
+
+temp=448;
+
+while(temp<=511)
+do
+[temp+DISK_LIST]=0;  			//set swap blocks as unused
+temp=temp+1;
+endwhile;
+
+store(6,20);
+
+temp=15;
+
+while(temp<=30)
+do
+[READY_LIST+temp]=-1;
+[READY_LIST+temp+1]=0;		//per process file tables are set to invalid states
+
+temp=temp+2;
+endwhile;
+
+[READY_LIST+31]=0;
+
+store(6,20);
+
+[READY_LIST+1]=2;
+SP = 4 * 512;
+[29 * 512] = 0;
+
+ireturn;
+
+
+

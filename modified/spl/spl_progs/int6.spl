@@ -1,0 +1,138 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias returnvalue S2;
+alias filename S3;
+alias temp S4;
+alias basicblock S5;
+alias datablocks S6;
+alias currentpid S7;
+alias currentpcb S8;
+alias currentptbr S9;
+alias validpages S10;
+alias counter S11;
+alias freepages S12;
+alias sysindex S13;
+alias newSP S14;
+alias count2 S15;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+sysCallNo=[physicalSP-1];
+returnvalue=physicalSP-2;
+currentpid=(PTBR-1024)/8;
+currentpcb=1536+32*currentpid;
+currentptbr=1024+currentpid*8;
+
+//------------------------------------------EXEC CALL--------------------------------
+if(sysCallNo==9)
+then
+filename=[physicalSP-3];
+
+temp=0;
+
+while(temp<64)
+do
+if([FAT+8*temp+0]==filename)
+then
+basicblock=[FAT+8*temp+2];
+break;
+endif;
+temp=temp+1;
+endwhile;
+
+if(temp==64)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+load(1,basicblock);
+
+temp=512;
+counter=0;
+
+while(counter<3)
+do
+
+if([currentptbr+2*counter+1]!="00")
+then
+	[MEM_LIST+[currentptbr+2*counter+0]]=[MEM_LIST+[currentptbr+2*counter+0]]-1;
+endif;
+
+if([currentptbr+2*counter+0]>=448)
+then
+	[DISK_LIST+[currentptbr+2*counter+0]]=[DISK_LIST+[currentptbr+2*counter+0]]-1;
+endif;
+
+	counter=counter+1;
+endwhile;
+
+store(6,20);
+counter=0;
+temp=512;
+
+while(temp<=514&&counter<3)
+do
+
+if([temp+0]!=-1 && [temp+0]!="")
+then
+	[currentptbr+2*counter+0]=[temp+0];  		//----------copying disk block numbers to page table----------------
+	[currentptbr+2*counter+1]="00";
+	counter=counter+1;
+endif;
+	temp=temp+1;
+endwhile;
+
+while(counter<3)
+do						
+	[currentptbr+2*counter+0]=-1;  			//----------invalidating entries in page table-----------------------
+	[currentptbr+2*counter+1]="00";
+	counter=counter+1;
+endwhile;
+
+
+[currentptbr+7+0]="01";					//--------------------stack set to 01----------------------
+
+temp=currentpcb+15;
+counter=0;
+
+while(counter<8)
+do
+	sysindex=[temp+2*counter]; 
+
+if(sysindex!=-1)
+then
+	[FILE_TABLE+ 2*sysindex+1]=[FILE_TABLE+ 2*sysindex+1]-1;
+
+if([FILE_TABLE+ 2*sysindex+1]==0)
+then
+	[FILE_TABLE+ 2*sysindex+0]=-1;
+endif;
+endif;
+	[temp+2*counter+0]=-1; 
+	[temp+2*counter+1]=-1; 
+	counter=counter+1;
+endwhile;
+
+SP=3*512;
+newSP = ([currentptbr + 2 * (SP / 512)] * 512) + (SP % 512);
+[newSP]=0;
+[returnvalue]=0;
+ireturn;
+endif;
+
+//------------------------------------------------GETPID CALL------------------------------------
+
+if(sysCallNo==11)
+then
+	[returnvalue]=currentpid;
+	ireturn;
+endif;
+
+//-----------------------------------------------GETPPID CALL---------------------------------------
+
+if(sysCallNo==12)
+then
+	[returnvalue]=[currentpcb+31];
+	ireturn;
+endif;
+

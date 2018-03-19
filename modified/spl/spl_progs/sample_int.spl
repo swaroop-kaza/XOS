@@ -1,0 +1,155 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias returnvalue S2;
+alias filename S3;
+alias temp S4;
+alias basicblock S5;
+alias fatentry S6;
+alias counter S7;
+alias temp2 S8;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+sysCallNo=[physicalSP-1];
+returnvalue=physicalSP-2;
+filename=[physicalSP-3];
+
+
+if(sysCallNo==1)
+then
+temp=FAT;
+while([temp]!=filename && temp<=3064) do
+temp=temp+8;
+endwhile;
+
+if(temp<=3064)
+then
+[returnvalue]=0;
+ireturn;
+endif;
+
+temp=24;
+while([3072+temp]==1 && temp<448)
+do
+temp=temp+1;
+endwhile;
+
+if(temp==448)
+then
+[returnvalue]=-1;
+ireturn;
+else
+basicblock=temp;
+endif;
+
+
+temp=FAT;
+while([temp+2]!=-1 &&temp<=3064)
+do
+temp=temp+8;
+endwhile;
+
+if(temp>3064)
+then 
+[returnvalue]=-1;
+ireturn;
+else
+
+[temp+0]=filename;
+[temp+1]=0;
+[temp+2]=basicblock;
+endif;
+
+load(1,basicblock);
+
+
+temp=512;
+while(temp<=1023)
+do
+[temp]=-1;
+temp=temp+1;
+endwhile;
+
+store(1,basicblock);
+[3072+basicblock]=1;
+
+store(5,19);
+store(6,20);
+
+[returnvalue]=0;
+
+ireturn;
+endif;
+
+  //DELETE
+
+
+if(sysCallNo==4)
+then
+temp=FAT;
+
+while([temp]!=filename && temp<=3064) do
+temp=temp+8;
+endwhile;
+
+
+if(temp>3064)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+fatentry= (temp-FAT)/8;
+counter=0;
+temp=FILE_TABLE;
+
+while(counter<64)
+do
+if([FILE_TABLE+2*counter+0]==fatentry)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+counter=counter+1;
+endwhile;
+
+basicblock=[FAT+8*fatentry+2];
+temp=0;
+
+while(temp<512)
+do
+load(1,basicblock);
+load(1,[512+temp]);
+temp2=512;
+
+while(temp2<1024)
+do
+[temp2]="";
+temp2=temp2+1;
+endwhile;
+
+store(1,[512+temp]);
+temp=temp+1;
+endwhile;
+
+load(1,basicblock);
+
+temp=512;
+while(temp<1024)do
+[temp]="";
+temp=temp+1;
+endwhile;
+
+[DISK_LIST+basicblock]=0;
+temp=FAT+fatentry*8;
+
+[temp+0]=-1;
+[temp+2]=-1;
+
+store(5,19);
+store(6,20);
+
+[returnvalue]=0;
+ireturn;
+endif;
+
+

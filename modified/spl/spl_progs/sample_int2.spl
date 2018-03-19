@@ -1,0 +1,169 @@
+alias physicalSP S0;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+alias sysCallNo S1;
+sysCallNo=[physicalSP-1];
+
+alias returnvalue S2;
+returnvalue=physicalSP-2;
+
+alias temp S4;
+alias fatentry S5;
+alias counter S6;
+alias systableindex S7;	
+alias freeentry S8;		
+alias currentPID S9;
+alias currentPCB S10;
+alias perproindex S11;
+
+currentPID=(PTBR-1024)/8;
+currentPCB=1536 + currentPID*32;
+
+ //OPEN
+
+if(sysCallNo==2)
+then
+alias filename S3;
+filename=[physicalSP-3];
+
+temp=FAT;
+
+while([temp+0]!=filename && temp<=3064) do
+temp=temp+8;
+endwhile;
+
+if(temp>3064)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+fatentry=(temp-2560)/8;          
+counter = 0;
+
+while ( counter <  64) do			
+	if([ FILE_TABLE + 2*counter + 0] ==fatentry)
+        then	
+	systableindex=counter; 
+        break;
+        endif;
+	counter = counter + 1;			
+endwhile;
+
+if(counter<64)
+then   
+temp=counter;
+counter=0;
+
+while(counter<8)
+do
+if([currentPCB+15+2*counter+0]==-1)
+then
+[returnvalue]=counter;
+[currentPCB+15+2*counter+0]=systableindex;
+[currentPCB+15+2*counter+1]=0;
+
+[ FILE_TABLE + 2*temp + 1]= [ FILE_TABLE + 2*temp + 1]+1;
+
+ireturn;
+endif;
+counter=counter+1;
+endwhile;
+
+if(counter>=8)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+endif;
+
+counter=temp;
+if(counter>=64)
+then
+counter = 0;
+while ( counter <  64) do			
+	if([ FILE_TABLE + 2*counter + 0] ==-1)
+        then	
+	freeentry=counter;                            
+        break;
+        endif;
+	counter = counter + 1;			
+endwhile;	
+endif;
+
+if(counter>=64)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+counter=0;
+while(counter<8)
+do
+if([currentPCB+15+2*counter]==-1)
+then
+perproindex=counter;
+break;
+endif;
+counter=counter+1;
+endwhile;
+
+if(counter>=8)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+[currentPCB+15+2*perproindex]=freeentry;
+[1+currentPCB+15+2*perproindex]=0;
+
+
+[FILE_TABLE + 2*freeentry+0]=fatentry;
+[FILE_TABLE + 2*freeentry+1]=[FILE_TABLE + 2*freeentry+1]+1;
+
+
+[returnvalue]=perproindex;
+ireturn;
+endif;
+
+    //close
+
+if(sysCallNo==3)
+then
+
+alias descriptor S3;
+descriptor=[physicalSP-3];
+
+temp=1536+descriptor*2+15+currentPID*32;
+
+if([temp+0]==-1)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+systableindex=[temp]; 
+
+
+
+[FILE_TABLE+ 2*systableindex+1]=[FILE_TABLE+ 2*systableindex+1]-1;
+
+if([FILE_TABLE+ 2*systableindex+1]==0)
+then
+[FILE_TABLE+ 2*systableindex+0]=-1;
+endif;
+
+[temp]=-1;
+[temp+1]=-1;
+
+[returnvalue]=0;
+ireturn;
+endif;
+
+
+
+
+
+
+

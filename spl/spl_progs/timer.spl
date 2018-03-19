@@ -1,0 +1,91 @@
+alias currentPID S0;
+alias currentPCB S1;
+alias physicalSP S2;
+alias newPCB S3;
+alias newphysicalSP S4;
+print("TIMER");
+currentPID = (PTBR-1024)/8;					//caluclating the PID of current process
+								//PTBR base address of page table
+								//and each process occurs 8words
+								//to know PID (PTBR-1024)/8
+
+currentPCB = READY_LIST + 32 * currentPID;			//READY_LIST where PCB starts
+								//to move on to current PCB 
+								//8 * PID
+
+[currentPCB + 1] = 1;						//state of current process changed
+								//from running to ready
+
+[currentPCB + 2] = BP;						//storing BP in currentPCB for back up
+[currentPCB + 3] = SP-1;					//storing SP in currentPCB for back up
+
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);		//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+[currentPCB + 4] = [physicalSP];				//storing IP into currentPCB for the back up
+
+[currentPCB + 5] = PTBR;					//storing PTBR into currentPCB for back up
+[currentPCB + 6] = PTLR;					//storing PTLR into currentPCB for back up
+
+[currentPCB + 7] = R0;						//storing R0 into currentPCB for back up
+[currentPCB + 8] = R1;                                          //storing R1 into currentPCB for back up
+[currentPCB + 9] = R2;                                          //storing R2 into currentPCB for back up
+[currentPCB + 10] = R3;                                         //storing R3 into currentPCB for back up
+[currentPCB + 11] = R4;                                         //storing R4 into currentPCB for back up
+[currentPCB + 12] = R5;                                         //storing R5 into currentPCB for back up
+[currentPCB + 13] = R6;                                         //storing R6 into currentPCB for back up
+[currentPCB + 14] = R7;                                         //storing R7 into currentPCB for back up
+
+newPCB = currentPCB + 32;					//storing next PCB as newPCB
+
+if(newPCB > 2559) then						//checking if the newPCB is out of limit 
+	newPCB = READY_LIST;					//if newPCB is out of limit 
+								//store newPCB as first PCB 
+endif;
+
+while( [newPCB + 1] != 1 ) do					//checking with the next ready process
+	newPCB = newPCB + 32;
+	if( newPCB >2559 ) then					//checking while increment newPCB exceeds limit
+		newPCB = READY_LIST;				//if exceeds set to READY_LIST
+	endif;
+endwhile;
+
+[newPCB + 1] = 2;						//setting the new process as running state
+
+BP = [newPCB + 2];						//getting the BP from stored value
+SP = [newPCB + 3];						//getting the SP from stored value
+
+PTBR = [newPCB + 5];						//getting the PTBR from stored value
+PTLR = [newPCB + 6];						//getting the PTLR from stored value
+
+R0 = [newPCB + 7];                                          	//getting R0 from stored value
+R1 = [newPCB + 8];                                              //getting R1 from stored value
+R2 = [newPCB + 9];                                              //getting R2 from stored value
+R3 = [newPCB + 10];                                             //getting R3 from stored value
+R4 = [newPCB + 11];                                             //getting R4 from stored value
+R5 = [newPCB + 12];                                             //getting R5 from stored value
+R6 = [newPCB + 13];                                             //getting R6 from stored value
+R7 = [newPCB + 14];                                             //getting R7 from stored value
+
+SP = SP + 1;							//since the value stored in back don't indicate
+								//top of stack for IP
+
+newphysicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);         //address translation of SP to get IP
+                                                                //that is to be stored
+                                                                //physical address = physical page no * 512 + offset
+                                                                //offset = sp % 512
+                                                                //physical page no = [location of pagetable + 0]
+                                                                //location of pagetable = PTBR + logical page number * 2
+                                                                //logical page number = logical address / 512
+                                                                //multiply by 2 because of 2 entries in page table
+
+[newphysicalSP] = [newPCB + 4];					//getting IP from new PCB 
+								//into specified location in stack
+
+ireturn;

@@ -1,0 +1,126 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias i S2;
+alias argument S3;
+alias BasicBlock S4;
+alias j S7;
+alias PID S8;
+alias PCB S9;
+alias SWOFT S10;
+
+print("INT6");
+
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);            //address translation of SP to get IP
+                                                                //that is to be stored
+                                                                //physical address = physical page no * 512 + offset
+                                                                //offset = sp % 512
+                                                                //physical page no = [location of pagetable + 0]
+                                                                //location of pagetable = PTBR + logical page number * 2
+                                                                //logical page number = logical address / 512
+                                                                //multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];                                   //storing system call number from stack
+
+argument = [physicalSP - 3];					//storing argument from stack
+//print("b");
+if( sysCallNo == 9) then
+	i=0;
+//print("c");						
+	while( i<64 && [FAT + i*8]!=argument ) do		//checking all the fat entries 
+								//whether file name exists or not
+		i=i+1;
+	endwhile;
+	
+	if( i==64 ) then					//if fie does not exist
+		print "NO FILE WITH GIVEN FILE NAME";		//error message
+		[physicalSP - 2] = -1;				//storing return value in stack
+		ireturn;	
+	endif;
+
+	BasicBlock = [FAT + i*8 + 2];				//getting basic block number from fat
+	load(1,BasicBlock);					//loading basic block to scratch pad
+
+	i=0;
+	while(i<6) do						//Copying pagetable
+		if([PTBR + i + 1] == "11" || [PTBR + i + 1] == "01") then
+								//if a page is reffered then by process then 
+								//this is not used by the executable code
+								//so decrmented
+			[MEM_LIST + [PTBR + i]] = [MEM_LIST + [PTBR + i]] - 1;
+		else
+			if( [PTBR + i] > 447 ) then		//if page is in swap area then 
+								//disk free list entries are to be decreased
+				[DISK_LIST + [PTBR + i]] = [DISK_LIST + [PTBR + i]] - 1;
+			endif;
+		endif;
+		i=i+2;
+	endwhile;
+	store(6,20);						//storing back disk free list
+
+
+	i=0;
+	j=0;
+	while( i<512 && j<6) do
+		if( [SCRATCHPAD + i]!=-1 && [SCRATCHPAD + i]!="" ) then
+			[PTBR + j] = [SCRATCHPAD + i];
+			[PTBR + j + 1] = "00";
+			j=j+2;
+		endif;
+		i=i+1;
+	endwhile;
+
+	while( j<6 ) do
+		[PTBR + j] = -1;
+		[PTBR + j + 1] = "00";
+		j=j+2;
+	endwhile;
+
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR of current
+								//process whichh would be same for new process
+
+	PCB = READY_LIST + PID*32;				//caluculating PCB from PID
+//print("i");
+	i=15;							
+	while( i<31 ) do					//checking per process open file table
+		if( [PCB + i] != -1) then			//checking for the opend file 
+			SWOFT = FILE_TABLE + [PCB + i]*2;	//getting system wide open file table 
+								//index of the corresponding file
+			[SWOFT + 1] = [SWOFT + 1] -1;		//decrementing opend files in 
+								//system wide open file table
+			if( [SWOFT + 1] == 0 ) then		//if no of opend file are 0 then 
+								//remove its link to FAT
+				[SWOFT] = -1;
+			endif;			
+			[PCB + i] = -1;				//setting pointer to system wide open file table 
+								//to -1 indicating no pointer
+			[PCB + i + 1] = -1;			//setting LSEEK position to unreffered
+		endif;
+		i=i+2;
+	endwhile;
+
+	SP = 3*512;						//setting SP value to top of stack
+//print("j");
+	[[PTBR + 6] * 512] = 0;					//for setting IP to 0 after ireturn
+
+	ireturn;
+endif;
+
+if( sysCallNo == 11 ) then
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR of current
+								//process whichh would be same for new process
+
+	[physicalSP - 2] = PID;					//storing return value
+	
+	ireturn;
+endif;
+
+if( sysCallNo == 12 ) then
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR of current
+								//process whichh would be same for new process
+
+	PCB = READY_LIST + PID*32;				//caluculating PCB from PID
+
+	[physicalSP - 2] = [PCB + 31];				//storing return value
+
+	ireturn ;
+endif;

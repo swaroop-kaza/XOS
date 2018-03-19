@@ -1,0 +1,138 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias i S2;
+alias newPID S3;
+alias stack S4;
+alias newPTBR S5;
+alias newPCB S6;
+alias PCB S7;
+alias PID S8;
+alias newphySP S9;
+
+print("INT5");
+
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);		//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];					//storing system call number from stack
+
+if( sysCallNo == 8) then					//code for fork
+//print("1");	
+	i=0;
+	while( i<32 && [READY_LIST + i*32 +1]!=0 ) do		//checking for the vacant PCB
+								//total 32 PCB first word of PCB is STATE
+								//if STATE is 0 then PCB is vacant
+		i=i+1;
+	endwhile;
+
+	if(i==32) then						//if no vacant PCB
+		print "NO VACNCY IN PCB";			//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	newPID = i;						//storing index of the new process
+	[READY_LIST + 32*i] = i;				//setting PID of new process
+//print("2");
+	i=24;
+	while( i<64 && [MEM_LIST + i]!=0 ) do			//checking for a page for stack
+		i=i+1;
+	endwhile;
+											
+	if( i==64 ) then					//if no free page for stack
+		print "NO FREE MEM";				//error message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+//print("3");
+	stack = i;						//another copy of valid no of pages
+	[MEM_LIST + i] = 1;
+	
+	i=0;
+	while ( i<512 ) do					//coping stack from current process to new memory page
+		[stack*512 + i] = [[PTBR + 6]*512 + i];
+		i=i+1;
+	endwhile;
+	newPTBR = 1024 + newPID*8;				//calculating new PTBR for new process
+//print("4");
+	[newPTBR + 6] = stack;					//storing stack in page table
+	[newPTBR + 7] = "01";					//storing auxilary information in stack
+	
+	i=0;
+	while( i<6 ) do						//copying pagetables from older one to new
+		[newPTBR + i] = [PTBR + i];
+		[newPTBR + i + 1] = [PTBR + i + 1];
+
+		if( [PTBR + i + 1] == "11" || [PTBR + i + 1] == "01" ) then
+								//if page table is reffered then increment in memory free list
+			[MEM_LIST + [PTBR + i]] = [MEM_LIST + [PTBR + i]] + 1;
+		else
+			if( [PTBR + i] > 447 ) then		//if page table uses in swap block then increment in disk free list
+				[DISK_LIST + [PTBR + i]] = [DISK_LIST + [PTBR + i]] + 1;
+			endif;
+		endif;
+		i=i+2;
+	endwhile;
+	store(6,20);						//storing back the updated disk free list
+//print("5");
+	newPCB = READY_LIST + newPID*32;			//calculating chlid PCB from PID calculated before
+
+								//setting PCB of child process
+	[newPCB + 0] = newPID;					//setting PID
+	[newPCB + 1] = 1;					//setting state
+	[newPCB + 2] = BP;					//setting BP
+	[newPCB + 3] = SP - 1;					//setting SP
+	[newPCB + 4] = [physicalSP];				//setting IP
+	[newPCB + 5] = newPTBR;					//setting PTBR
+	[newPCB + 6] = PTLR;					//setting PTLR
+	[newPCB + 7] = R0;					//setting program registers
+	[newPCB + 8] = R1;
+	[newPCB + 9] = R2;
+	[newPCB + 10] = R3;
+	[newPCB + 11] = R4;
+	[newPCB + 12] = R5;
+	[newPCB + 13] = R6;
+	[newPCB + 14] = R7;
+	
+	PID = (PTBR - 1024)/8;					//calculating PID of parent process
+	PCB = READY_LIST + PID*32;				//calculating PCB of parent process
+//print("6");
+
+	i=15;							//since per process open file table 
+								//starts from 15 and ends at 32
+	while( i<31 ) do
+		[newPCB + i] = [PCB + i];			//coping per process open file table of 
+								//parent process to child process
+		[newPCB + i + 1] = [PCB + i + 1];	 	//storing LSEEK of per process open file table
+		if( [PCB + i] != -1) then			//some file opend by the parent process
+								//then file entry has to be increased in
+								//system wide open file table
+			[FILE_TABLE + 2*[PCB + i] + 1] = [FILE_TABLE + 2*[PCB + i] + 1] +1;
+		endif;
+		i=i+2;
+	endwhile;
+breakpoint;
+	[newPCB + 31] = [PCB + 0];				//setting parent pid value in PCB of new process
+	[physicalSP - 2] = newPID;				//setting return value for parent process
+	
+	newphySP = ([newPTBR + 2*((SP-1)/512)] * 512) + ((SP-1)%512);   
+								//address translation of SP to get IP
+                                                                //that is to be stored
+                                                                //physical address = physical page no * 512 + offset
+                                                                //offset = sp % 512
+                                                                //physical page no = [location of pagetable + 0]
+                                                                //location of pagetable = PTBR + logical page number * 2
+                                                                //logical page number = logical address / 512
+                                                                //multiply by 2 because of 2 entries in page table
+
+	[newphySP - 1] = -2;					//storing return value for child process
+
+	ireturn;
+
+endif;

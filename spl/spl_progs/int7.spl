@@ -1,0 +1,200 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias i S2;
+alias PID S3;
+alias PCB S4;
+alias SWOFT S5;
+alias newPCB S6;
+alias newphysicalSP S7;
+alias waitPID S8;
+alias waitPCB S9;
+
+print("INT7");
+
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);            //address translation of SP to get IP
+                                                                //that is to be stored
+                                                                //physical address = physical page no * 512 + offset
+                                                                //offset = sp % 512
+                                                                //physical page no = [location of pagetable + 0]
+                                                                //location of pagetable = PTBR + logical page number * 2
+                                                                //logical page number = logical address / 512
+                                                                //multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];                                   //storing system call number from stack
+
+if( sysCallNo == 10) then
+	i=0;
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR
+	while(i<32) do						//checking all PCB for the process 
+								//for a process in wait state
+		if( [READY_LIST + i*32 + 1] == 100 + PID ) then //if process in ready state is found then 
+								//set it in ready state
+			[READY_LIST + i*32 + 1] = 1;
+		endif;
+		i=i+1;
+	endwhile;
+
+	i=0;							
+	while( i<32 && [READY_LIST + i*32 + 1] != 1 ) do	//checking all PCB's state whether it is ready
+								//if it is ready then stop
+		i=i+1;
+	endwhile;
+	
+	if( i==32 ) then					//iff all PCB's are checked and no
+								//process in ready state then halt
+		print "EXIT";
+		halt;
+	endif;
+
+	PID = (PTBR - 1024)/8;                                  //calculating PID from PTBR
+	PCB = READY_LIST + PID*32;				//calculating PCB from PID
+
+	i=15;							
+	while( i<31 ) do					//checking per process open file table
+		if( [PCB + i] != -1) then			//checking for the opend file 
+			SWOFT = FILE_TABLE + [PCB + i]*2;	//getting system wide open file table 
+								//index of the corresponding file
+			
+			[PCB + i] = -1;				//setting pointer to system wide open file table 
+								//to -1 indicating no pointer
+			[PCB + i +1] = -1;			//setting LSEEK position to unreffered
+			
+			[SWOFT + 1] = [SWOFT + 1] -1;		//decrementing opend files in 
+								//system wide open file table
+			if( [SWOFT + 1] == 0 ) then		//if no of opend file are 0 then 
+								//remove its link to FAT
+				[SWOFT] = -1;
+			endif;
+		endif;
+		i=i+2;
+	endwhile;
+
+	[PCB + 1] = 0;						//state of the current process to 0(terminated)
+	
+	i=0;
+	while( i<4 ) do						//clearing PTBR and disk free list
+		if( [PTBR + i*2 + 1] == "01" || [PTBR + i*2 + 1] == "11") then
+								//checking PTBR of reffered one
+			[MEM_LIST + [PTBR + i*2]] = [MEM_LIST + [PTBR + i*2]] - 1;
+								//reducing the count in memory free list
+			[PTBR + i*2] = -1;			//making physical page no to unreffered
+			[PTBR + i*2 + 1] = "00";		//and auxilary information
+		else
+			if( [PTBR + i*2 + 1] == "00" && [PTBR + i*2] >= 448 ) then
+								//checking for invalid page or auxilary 
+								//information						
+				[DISK_LIST + [PTBR + i*2]] = [DISK_LIST + [PTBR + i*2]] - 1;
+								//if this is fornd go for decrement in 
+								//disk free list
+			endif;
+		endif;
+		i=i+1;
+	endwhile;
+	
+	store(6,20);						//storing back the disk free list
+
+endif;
+
+if( sysCallNo == 13 ) then					//wait system call
+
+	waitPID = [physicalSP - 3];				//wait PID given as argument
+	waitPCB = READY_LIST + waitPID*32;			//calculating wait pcb from wait pid
+
+	if( [waitPCB + 1]==0 || [waitPCB + 2]==2 ) then 	//checking whether process in 
+								//terminated state or in running state
+		print "PROCESS ALREADY IN RUNNING OR TERMINATED";
+								//error message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	PID = (PTBR-1024)/8;					//calculating current process PID from PTBR
+	PCB = READY_LIST + PID*32;				//calculating current process PCB from PID
+	
+	[PCB + 1] = 100 + waitPID;				//storing values of current PCB with in wait state
+	[PCB + 2] = BP;
+	[PCB + 3] = SP;
+	[PCB + 4] = [physicalSP];
+	[PCB + 5] = PTBR;
+	[PCB + 6] = PTLR;
+	[PCB + 7] = R0;
+	[PCB + 8] = R1;
+	[PCB + 9] = R2;
+	[PCB + 10] = R3;
+	[PCB + 11] = R4;
+	[PCB + 12] = R5;
+	[PCB + 13] = R6;
+	[PCB + 14] = R7;
+endif;
+
+if( sysCallNo == 13 || sysCallNo==10 ) then			//some part of wait and exit
+
+	PID = (PTBR - 1024)/8;                         	        //calculating PID from PTBR
+	PCB = READY_LIST + PID*32;				//calculating PCB from PID
+
+	newPCB = PCB + 32;					//storing next PCB as newPCB
+
+	if(newPCB > 2559) then					//checking if the newPCB is out of limit 
+		newPCB = READY_LIST;				//if newPCB is out of limit 
+								//store newPCB as first PCB 
+	endif;
+
+	while( [newPCB + 1] != 1 ) do				//checking with the next ready process
+		newPCB = newPCB + 32;
+		if( newPCB >2559 ) then				//checking while increment newPCB exceeds limit
+			newPCB = READY_LIST;			//if exceeds set to READY_LIST
+		endif;
+	endwhile;
+
+	
+	[newPCB + 1] = 2;					//setting the new process as running state
+
+	BP = [newPCB + 2];					//getting the BP from stored value
+	SP = [newPCB + 3];					//getting the SP from stored value
+
+	PTBR = [newPCB + 5];					//getting the PTBR from stored value
+	PTLR = [newPCB + 6];					//getting the PTLR from stored value
+
+	R0 = [newPCB + 7];                                     	//getting R0 from stored value
+	R1 = [newPCB + 8];                                      //getting R1 from stored value
+	R2 = [newPCB + 9];                                      //getting R2 from stored value
+	R3 = [newPCB + 10];                                     //getting R3 from stored value
+	R4 = [newPCB + 11];                                     //getting R4 from stored value
+	R5 = [newPCB + 12];                                     //getting R5 from stored value
+	R6 = [newPCB + 13];                                     //getting R6 from stored value
+	R7 = [newPCB + 14];                                     //getting R7 from stored value
+
+	SP = SP + 1;						//since the value stored in back don't indicate
+								//top of stack for IP
+
+	newphysicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512); //address translation of SP to get IP
+                                        	                //that is to be stored
+                                	                        //physical address = physical page no * 512 + offset
+                        	                                //offset = sp % 512
+                	                                        //physical page no = [location of pagetable + 0]
+        	                                                //location of pagetable = PTBR + logical page number * 2
+	                                                        //logical page number = logical address / 512
+        	                                                //multiply by 2 because of 2 entries in page table
+	
+	[newphysicalSP] = [newPCB + 4];				//getting IP from new PCB 
+								//into specified location in stack
+	ireturn;
+
+endif;
+
+if( sysCallNo == 14 ) then					//signal system call
+
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR
+	
+	i=0;			
+	while( i<32 ) do					//checking all PCB to get the PCB in wait state
+		if( [READY_LIST + i*32 + 1] == 100 + PID ) then	//checking wait state PCB
+			[READY_LIST + i*32 + 1]=1;		//state of that PCB is to kept in ready
+		endif;
+		i=i+1;
+	endwhile;
+
+	[physicalSP - 2] = 0;					//storing return value
+	
+	ireturn;
+endif;

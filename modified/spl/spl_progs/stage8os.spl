@@ -1,0 +1,94 @@
+
+//exhandler
+load(7,1);  
+load(8,2);
+
+//interrupt1
+
+load(11,5);
+load(12,6);
+
+//interrupt2
+
+load(13,7);
+load(14,8);
+
+//interrupt3
+load(15,9);
+load(16,10);
+
+//interrupt4
+
+load(17,11);
+load(18,12);
+
+//interrupt7
+load(23,17); 
+load(24,18);
+
+//FAT and DF-list
+load(5,19);
+load(6,20);
+
+//timerinterrupt
+load(9,3);
+load(10,4);
+
+[READY_LIST + 0] = 0;
+
+PTBR = 1024;
+PTLR = 4;
+
+[PTBR + 0] = 21; // Physical Page Number for Logical Page 0
+[PTBR + 1] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 2] = 22; // Physical Page Number for Logical Page 0
+[PTBR + 3] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 4] = 23; // Physical Page Number for Logical Page 0
+[PTBR + 5] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 6] = 25; // Physical Page Number for Logical Page 0
+[PTBR + 7] = "01"; // Auxiliary Information for Logical Page 0
+
+temp=0;
+
+while(temp<=25)
+do
+[temp+1280]=1;
+temp=temp+1;
+endwhile;
+
+
+alias counter S0;			
+counter = 0;
+while ( counter <  128) do			// 64 entries, each of size 2 words
+	[ FILE_TABLE + counter + 0] = -1;	// Set FAT Index to -1
+	[ FILE_TABLE + counter + 1] =  0;	// Set File Open Count to 0
+	counter = counter + 2;			// Move to next entry
+endwhile;
+
+
+alias temp S1;
+temp=15;
+
+while(temp<=30)
+do
+[READY_LIST+temp]=-1;
+[READY_LIST+temp+1]=0;
+
+temp=temp+2;
+endwhile;
+
+[READY_LIST+31]=-1;
+
+store(5,19);
+store(6,20);
+
+[READY_LIST+1]=2;
+SP = 3 * 512;
+[28 * 512] = 0;
+
+ireturn;
+
+
+
+
+

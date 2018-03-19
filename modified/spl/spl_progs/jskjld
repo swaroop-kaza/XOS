@@ -1,0 +1,10 @@
+Unix-XFS Interace Version 1.0. 
+Type "help" for  getting a list of commands.
+# load --init $HOME/myxos/apl/apl_progs/first.xsm
+# ./spl --int=7 $HOME/myxos/spl/spl_progs/halt.spl
+Unknown command "./spl". See "help" for more information
+# load --int=7 $HOME/myxos/spl/spl_progs/int7.xsm
+# load --exhandler $HOME/myxos/spl/spl_progs/exhandler.xsm
+# load --os $HOME/myxos/spl/spl_progs/os_startup.xsm
+# exit
+

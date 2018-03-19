@@ -1,0 +1,153 @@
+alias physicalSP S0;
+physicalSP=[PTBR+2*(SP/512)]*512+SP%512;
+alias currentpid S1;
+currentpid=(PTBR-1024)/8;
+alias currentpcb S2;
+currentpcb=READY_LIST+(currentpid*32);
+alias syscallno S14;
+syscallno=[physicalSP-1];
+if(syscallno==10) then
+alias counter S3;
+counter=READY_LIST;
+while(counter<READY_LIST+32*32) do
+   if([counter+1]==100+currentpid) then
+      [counter+1]=1;
+   endif;
+  counter=counter+32;
+endwhile;
+
+  alias newpcb S4;
+  alias syswideindex S5;
+  //newpcb=counter;
+  counter=currentpcb+15;
+  while(counter<currentpcb+31) do
+       syswideindex=[counter];
+       if(syswideindex!=-1) then
+         [counter]=-1;
+         [counter+1]=-1;
+         [FILE_TABLE+2*syswideindex+1]=[FILE_TABLE+2*syswideindex+1]-1;
+         if([FILE_TABLE+2*syswideindex+1]==0) then
+           [FILE_TABLE+2*syswideindex]=-1;
+         endif;
+       endif;
+   counter=counter+2;
+  endwhile;
+  [currentpcb+1]=0;
+  counter=PTBR;
+  while(counter<PTBR+2*PTLR) do
+      if([counter+1]=="01" || [counter+1]=="11") then
+         [MEM_LIST+[counter]]=[MEM_LIST+[counter]]-1;
+         [counter]=-1;
+         [counter+1]="00";
+      else
+        if([counter]>=448) then
+          [DISK_LIST+[counter]]=[DISK_LIST+[counter]]-1;
+        endif;
+        [counter]=-1;
+        [counter+1]="00";
+      endif;
+      counter=counter+2;
+  endwhile;
+store(6,20);
+counter=READY_LIST;
+while(counter<READY_LIST+32*32 && [counter+1]!=1) do
+  counter=counter+32;
+endwhile;
+if(counter==READY_LIST+32*32) then
+  halt;
+else
+  newpcb=currentpcb+32;
+  if(newpcb==READY_LIST+32*32) then
+     newpcb=READY_LIST;
+  endif;
+  while([newpcb+1]!=1) do
+      newpcb=newpcb+32;
+      if(newpcb==READY_LIST+32*32) then
+        newpcb=READY_LIST;
+      endif;
+  endwhile;
+BP=[newpcb+2];
+SP=[newpcb+3];
+PTBR=[newpcb+5];
+PTLR=[newpcb+6];
+R0=[newpcb+7];
+R1=[newpcb+8];
+R2=[newpcb+9];
+R3=[newpcb+10];
+R4=[newpcb+11];
+R5=[newpcb+12];
+R6=[newpcb+13];
+R7=[newpcb+14];
+SP=SP+1;
+alias newPhysicalSP S6;
+newPhysicalSP= ([PTBR+(2*(SP/512))]*512)+(SP%512);
+[newPhysicalSP]=[newpcb+4];
+[newpcb+1]=2;
+ireturn;
+endif;
+endif;
+if(syscallno==13) then
+ alias waitingpid S3;
+ waitingpid=[physicalSP-3];
+ if([READY_LIST+waitingpid*32+1]==2 || [READY_LIST+waitingpid*32+1]==0) then
+   [physicalSP-2]=-1;
+   ireturn;
+ endif;
+[currentpcb+1]=100+waitingpid;
+[currentpcb+2]=BP;
+[currentpcb+3]=SP-1;
+[currentpcb+4]=[physicalSP];
+[currentpcb+5]=PTBR;
+[currentpcb+6]=PTLR;
+[currentpcb+7]=R0;
+[currentpcb+8]=R1;
+[currentpcb+9]=R2;
+[currentpcb+10]=R3;
+[currentpcb+11]=R4;
+[currentpcb+12]=R5;
+[currentpcb+13]=R6;
+[currentpcb+14]=R7;
+ alias newpcb S4;
+ newpcb=currentpcb+32;
+  if(newpcb==READY_LIST+32*32) then
+     newpcb=READY_LIST;
+  endif;
+  while([newpcb+1]!=1) do
+      newpcb=newpcb+32;
+      if(newpcb==READY_LIST+32*32) then
+        newpcb=READY_LIST;
+      endif;
+  endwhile;
+BP=[newpcb+2];
+SP=[newpcb+3];
+PTBR=[newpcb+5];
+PTLR=[newpcb+6];
+R0=[newpcb+7];
+R1=[newpcb+8];
+R2=[newpcb+9];
+R3=[newpcb+10];
+R4=[newpcb+11];
+R5=[newpcb+12];
+R6=[newpcb+13];
+R7=[newpcb+14];
+SP=SP+1;
+alias newPhysicalSP S5;
+newPhysicalSP= ([PTBR+(2*(SP/512))]*512)+(SP%512);
+[newPhysicalSP]=[newpcb+4];
+[newpcb+1]=2;
+[physicalSP-2]=0;
+ireturn;
+endif;
+if(syscallno==14) then
+ alias counter S3;
+ counter=READY_LIST;
+ while(counter<READY_LIST+32*32) do
+  if([counter+1]==100+currentpid) then
+     [counter+1]=1;
+ endif;
+   counter=counter+32;
+ endwhile;
+ [physicalSP-2]=0;
+ ireturn;
+endif;
+

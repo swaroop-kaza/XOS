@@ -1,0 +1,224 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias returnvalue S2;
+alias temp S4;
+alias counter S5;
+alias freepcb S6;
+alias parentpcb S7;
+alias parentid S8;
+alias parentptbr S9;
+alias validpages S10;
+alias freepages S11;
+alias childptbr S12;
+alias count2 S13;
+alias childpcb S14;
+alias temp2 S3;
+alias sysindex S15;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+sysCallNo=[physicalSP-1];
+returnvalue=physicalSP-2;
+
+if(sysCallNo==8)
+then
+counter=0;
+
+while([READY_LIST+32*counter+1]!=0  && counter<32)
+do
+counter=counter+1;
+endwhile;
+
+if(counter==32)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+freepcb=counter;
+validpages=0;
+
+[READY_LIST+32*counter+0]=counter;
+
+parentid=(PTBR-1024)/8;
+parentpcb=READY_LIST+(32*parentid);
+
+parentptbr=1024+(8*parentid);
+counter=0;
+
+while(counter<4)
+do
+if([parentptbr+2*counter+0]!=-1)
+then
+validpages=validpages+1;
+endif;
+counter=counter+1;
+endwhile;
+
+
+// free pages in memory list 
+
+temp=1280;
+freepages=0;
+
+while(temp<=1343)
+do
+if([temp+0]==0)
+then
+freepages=freepages+1;
+endif;
+temp=temp+1;
+endwhile;
+
+
+if(validpages>freepages)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+//updating entries in memory list
+
+temp=1280;
+
+childpcb=READY_LIST+freepcb*32;
+childptbr=1024+8*freepcb;
+[childpcb+5]=childptbr;
+counter=0;
+
+while(counter<4)
+do
+if([parentptbr+2*counter+0]==-1)
+then
+[childptbr+2*counter+0]=-1;
+[childptbr+2*counter+1]="00";
+endif;
+counter=counter+1;
+endwhile;
+
+counter=validpages-1;
+count2=0;
+
+while(counter>0 && temp<=1343)
+do
+if([temp+0]==0)
+then
+[temp]=1;
+[childptbr+2*count2+0]=temp-1280;
+count2=count2+1;
+counter=counter-1;
+endif;
+temp=temp+1;
+endwhile;
+
+if(temp>1343)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+temp=1280;
+while(temp<=1343)
+do
+if([temp]==0)
+then
+[temp]=1;
+[childptbr+6+0]=temp-1280;
+break;
+endif;
+temp=temp+1;
+endwhile;
+
+counter=0;
+count2=0;
+
+while(counter<4)
+do
+temp=[parentptbr+2*counter+0];
+temp2=[childptbr+2*counter+0];
+
+[childptbr+2*counter+1]=[parentptbr+2*counter+1];
+count2=0;
+if(temp!=-1)
+then
+while(count2<512)
+do
+[temp2*512+count2]=[temp*512+count2];
+count2=count2+1;
+endwhile;
+endif;
+
+counter=counter+1;
+endwhile;
+
+
+[childpcb+4]=[([PTBR+ 2 * (SP / 512)] * 512) + (SP % 512)];
+[childpcb+3]=SP-1;
+
+[childpcb+0]=freepcb;
+[childpcb+2]=BP;
+[childpcb+6]=4;
+[childpcb+7]=R0;
+[childpcb+8]=R1;
+[childpcb+9]=R2;
+[childpcb+10]=R3;
+[childpcb+11]=R4;
+[childpcb+12]=R5;
+[childpcb+13]=R6;
+[childpcb+14]=R7;
+[childpcb+31]=parentid;
+
+temp=0;
+
+while(temp<8)
+do
+[childpcb+15+2*temp]=[parentpcb+15+2*temp];
+[childpcb+15+2*temp+1]=[parentpcb+15+2*temp+1];
+
+if([parentpcb+15+2*temp]!=-1)
+then
+sysindex=[parentpcb+15+2*temp];
+temp2=FILE_TABLE+2*sysindex;
+[temp2+1]=[temp2+1]+1;
+endif;
+
+temp=temp+1;
+endwhile;
+
+[childpcb+1]=1;
+[returnvalue]=freepcb;
+
+
+
+//child physical sp
+alias newphysicalSP S15;
+
+temp=SP-1;
+
+newphysicalSP=([childptbr+ 2 * (temp / 512)] * 512) + (temp % 512);
+[newphysicalSP-1]=-2;
+
+ireturn;
+endif;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

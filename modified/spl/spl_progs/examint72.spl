@@ -1,0 +1,204 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias returnvalue S2;
+alias argument S3;
+alias temp S4;
+alias sysindex S5;
+alias newPCB S6;
+alias currentpid S7;
+alias currentpcb S8;
+alias currentptbr S9;
+alias waitingid S10;
+alias counter S11;
+alias pid S12;
+alias newphysicalSP S13; 
+alias newptbr S14;
+alias waitingpcb S15;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+sysCallNo=[physicalSP-1];
+currentpid=(PTBR-1024)/10;
+
+currentpcb=1536+(currentpid*32);
+
+
+//------------------------------------------------EXIT CALL------------------------------------------
+
+if(sysCallNo==10)   	
+then	
+	[currentpcb+1]=0;
+	temp=0;
+while(temp<32)
+do
+	if([READY_LIST+temp*32+1]==100+currentpid)
+	then
+		[READY_LIST+temp*32+1]=1;
+	endif;
+temp=temp+1;
+endwhile;
+
+temp=0;
+
+while([READY_LIST+32*temp+1]!=1 && temp<32)
+do
+	temp=temp+1;
+endwhile;
+
+if(temp>=32)
+then
+	halt;
+endif;
+
+temp=currentpcb+15;
+counter=0;
+
+while(counter<8)
+do
+sysindex=[temp+2*counter]; 
+
+if(sysindex!=-1)
+then
+	[FILE_TABLE+ 2*sysindex+1]=[FILE_TABLE+ 2*sysindex+1]-1;
+
+if([FILE_TABLE+ 2*sysindex+1]==0)
+then
+	[FILE_TABLE+ 2*sysindex+0]=-1;		 		//-----invalidating systable and perprocess open file tables-------
+endif;
+endif;
+	[temp+2*counter+0]=-1; 
+	[temp+2*counter+1]=-1; 
+	counter=counter+1;
+endwhile;
+
+currentptbr=1024+(currentpid*10);
+counter=0;
+
+
+while(counter<=4)
+do
+if([currentptbr+2*counter+1]=="01"||[currentptbr+2*counter+1]=="11")
+then
+	[1472+[currentptbr+2*counter+0]]=[1472+[currentptbr+2*counter+0]]-1;
+
+else
+if([currentptbr+2*counter+0]>=448)
+then
+	[DISK_LIST+[currentptbr+2*counter+0]]=[DISK_LIST+[currentptbr+2*counter+0]]-1;
+endif;
+endif;
+	[currentptbr+2*counter+0]=-1;
+	[currentptbr+2*counter+1]="00";
+	counter=counter+1;
+endwhile;
+
+store(6,20);
+temp=(currentpid+1)%32;
+
+while([1536+(32*temp)+1]!=1) 			
+do
+temp=(temp+1)%32;
+endwhile;
+
+newPCB=READY_LIST + 32 *temp;
+
+PTLR=5;
+SP =[newPCB+3] + 1;
+PTBR=[newPCB+5];
+BP=[newPCB+2];
+R0=[newPCB+7];
+R1=[newPCB+8];
+R2=[newPCB+9];
+R3=[newPCB+10];
+R4=[newPCB+11];
+R5=[newPCB+12];
+R6=[newPCB+13];
+R7=[newPCB+14];
+
+[([PTBR + 2 * (SP / 512)] * 512)+ (SP % 512)]= [ newPCB + 4 ]; // Stores IP field value of PCB on the stack 
+
+ireturn;
+endif;
+
+//--------------------------------------------------------WAIT CALL-----------------------------------------------------------------
+
+if(sysCallNo==13)  	// wait system call 
+then
+
+waitingid=[physicalSP-3];
+waitingpcb=1536+waitingid*32;
+
+if([waitingpcb+1]==2 || [waitingpcb+1]==0)
+then
+[physicalSP-2]=-1;
+ireturn;
+endif;
+
+[currentpcb+1]=100+waitingid;
+[currentpcb+3]=SP-1;
+[ currentpcb + 4 ] = [ physicalSP ]; // Save IP of current process in the PCB from the stack
+[currentpcb+2]=BP;
+[ currentpcb + 5 ] = PTBR;
+[ currentpcb + 6 ] = 5;	
+[ currentpcb + 7 ] = R0;
+[ currentpcb + 8 ] = R1;
+[ currentpcb + 9 ] = R2;
+[ currentpcb + 10 ] = R3;
+[ currentpcb + 11] = R4;
+[ currentpcb + 12] = R5;
+[ currentpcb + 13 ] = R6;
+[ currentpcb + 14 ] = R7;
+
+temp=(currentpid+1)%32;
+
+while([1536+(32*temp)+1]!=1) 
+do
+temp=(temp+1)%32;
+endwhile;
+
+newPCB=READY_LIST + 32 *temp;
+
+PTLR=[newPCB+6];
+SP =[newPCB+3] + 1;
+PTBR=[newPCB+5];
+BP=[newPCB+2];
+R0=[newPCB+7];
+R1=[newPCB+8];
+R2=[newPCB+9];
+R3=[newPCB+10];
+R4=[newPCB+11];
+R5=[newPCB+12];
+R6=[newPCB+13];
+R7=[newPCB+14];
+
+
+newphysicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512); 
+[ newphysicalSP ] = [ newPCB + 4 ]; // Stores IP field value of PCB on the stack 
+[physicalSP-2]=0;
+ireturn;
+endif;
+
+//------------------------------------------------SIGNAL CALL-------------------------------------------------------------------------
+
+if(sysCallNo==14)  // signal system call 
+then
+temp=0;
+
+while(temp<32)
+do
+
+if([READY_LIST+temp*32+1]==100+currentpid)
+then
+	[READY_LIST+temp*32+1]=1;
+endif;
+	temp=temp+1;
+endwhile;
+
+[physicalSP-2]=0;
+ireturn;
+endif;
+
+
+
+
+
+

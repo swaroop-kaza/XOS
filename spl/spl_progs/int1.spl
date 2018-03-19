@@ -1,0 +1,172 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias argument S2;
+alias i S3;
+alias BasicBlock S4;
+alias FATentry S5;
+alias DataBlock S6;
+alias j S7;
+print("INT1");
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);		//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];					//storing system call number from stack
+argument = [physicalSP - 3];					//storing argument from stack
+
+if( sysCallNo == 1) then					//code for create
+
+	i=0;
+	while( i<64 ) do					//checking all FAT entries
+								//total FAT entries are 64
+		if( [FAT + i*8] == argument) then		//cheking if file already exists
+			print "FILE EXISTS";			//corresponding message
+			[physicalSP - 2] = 0;			//storing return value in stack 
+			ireturn;
+		endif;
+		i=i+1;
+	endwhile;	
+
+	i=24;							//disk free list until 23 are system blocks
+	while( i<448 && [DISK_LIST + i]==1 ) do			//from 24 to 447 user blocks
+								//checking for free block in disk 
+								//used for basic block
+		i=i+1;
+	endwhile;
+	
+	if( i==448 ) then					//checking whether all disks are checked
+		print "NO FREE BLOCKS";				//corresponding error message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	BasicBlock = i;						//setting free block as basic block
+								//for the file to be created
+
+	i=0;							
+	while( i<64 && [FAT + i*8 + 2]!=-1 ) do			//searching for free entry of FAT 
+								//maximum fat entries are 64
+								//free FAT entry contains -1 as basic block no
+		i=i+1;
+	endwhile;
+
+	if( i==64 ) then 					//if all FAT entries are occupied
+		print "NO FREE FAT";				//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	FATentry = FAT + i*8;					//FAT entry of the file is stored 
+								//since each FAT entry occupies 8 words 
+	
+	[FATentry + 0] = argument;				//storing file name in FAT
+	[FATentry + 1] = 0;					//storing file size in FAT
+	[FATentry + 2] = BasicBlock;				//storinf file basic block number in FAT
+	
+	load(1,BasicBlock);					//loading temporarily basic block to memory
+								//in scratchpad for reading and modifing file
+	
+	i=512;							//scratchpad starts from 512 words
+	while( i<1024 ) do					//ends at 1024
+		[i] = -1;					//all entries are to be -1
+								//indicating no data blocks
+		i=i+1;
+	endwhile;
+
+	store(1,BasicBlock);					//storing back the basic block with modification
+
+	[DISK_LIST + BasicBlock] = 1;				//indicating that disk free list is occupied
+
+	store(5,19);						//storing back FAT after modification
+
+	store(6,20);						//storing back disk free list modification
+
+	[physicalSP - 2] = 0;					//storing return value of system call
+	
+	ireturn;
+
+endif;
+
+if( sysCallNo == 4 ) then 					//code delete
+	
+	i=0;
+        while( i<64 && [FAT + i*8]!=argument ) do		//checking FAT entries 
+								//file exists or not
+		i=i+1;
+	endwhile;
+
+	if( i==64 ) then					//if required FAT entry is absent
+		print "FILE NOT FOUND";				//corresponding messsage
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	FATentry = i;						//storing FAT entry of required file
+	
+	i=0;
+	while( i<64 ) do					//checking all SWOFT
+		if( [FILE_TABLE + i]==FATentry ) then		//checking with FAT entry in SWOFT
+			print "FILE IS OPENED CAN'T DELETE";	//corresponding message
+			[physicalSP - 2] = -1;			//storing return value
+			ireturn;
+		endif;
+		i=i+2;
+	endwhile;
+
+	BasicBlock = [FAT + FATentry*8 + 2];			//get basic block number from FAT of required file
+
+	i=0;
+	while( i<512 ) do					//modifing every data block
+								//contains information about 512 data blocks
+								//in basic block
+		load(1,BasicBlock);				//loading basic block to scratchpad
+		DataBlock = [SCRATCHPAD + i];			//obtaining ith data block
+		if( DataBlock!=-1 ) then			//checking whether data block is occupied or not
+								//if data block is occupied
+			load(1,DataBlock);			//load data block into scratchpad
+			
+			j=0;
+			while( j<512 ) do			//modifing each word of data block
+								//cotains 512 words in each data block
+				[SCRATCHPAD + j]="";		//modification as empty string
+				j=j+1;
+			endwhile;
+			store(1,DataBlock);			//store back the madified data block from scratchpad
+			[DISK_LIST + DataBlock]=0;		//modify disk free list 
+								//of data block as unused
+		endif;
+		i=i+1;
+	endwhile;
+
+	i=0;
+	load(1,BasicBlock);					//again loading basic block into scratchpad
+
+	while( i<512 ) do					//modifing each word of basic block
+		[SCRATCHPAD + i] = -1;				//modified as no data blocks
+								//that is -1 represented
+		i=i+1;
+	endwhile;
+
+	store(1,BasicBlock);					//storing back the modified basic block	from scratchpad
+	[DISK_LIST + BasicBlock] = 0;				//modifing disk free list
+								//of basic block as unused
+
+	[FAT + FATentry*8] = -1;				//modifing file name of FAT as -1
+	[FAT + FATentry*8 + 1] = 0;				//modifing file size of FAT as 0
+	[FAT + FATentry*8 + 2] = -1;				//modifing basic block of FAT as -1
+	
+	store(5,19);						//stores modified FAT
+	store(6,20);						//stores modified disk free list
+	
+	[physicalSP - 2] = 0;					//storing return value in stack
+
+	ireturn;
+
+endif;
+
+	

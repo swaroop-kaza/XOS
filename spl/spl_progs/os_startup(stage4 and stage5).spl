@@ -1,0 +1,60 @@
+load(7,1);					//loading exhandler from disk to memory
+load(8,2);
+
+load(23,17);					//loading interrupt 7 routine from disk to memory
+load(24,18);
+
+load(11,5);					//loading interrupt 1 routine from disk to memory
+load(12,6);	
+
+load(9,3);					//loading timer interrupt routine from disk to memory
+load(10,4);				
+
+[READY_LIST + 0] = 0;				//sets the entry for PID as 0
+						//from 1536 + (PID * 32) we can get ready list for process of given PID 
+						//default of READY_LIST is 1536
+						//as PID of init is set to be zero  
+
+load(25,21);					//load init code first page from disk to memory	
+load(26,22);					//load init code second page from disk to memory
+load(27,23);					//load init code third page from disk to memory
+
+PTBR = 1024;					//setting per process page table for init
+						//from PTBR = 1024 + (PID * 8)
+						//here for init PID=0
+
+PTLR = 4;					//every process in XOS has length as 4
+
+						//process takes 4 pages
+						//each page pagetable has to be set
+						//first part of page table contain physical address 
+						//corresponding to logical address
+						//second part auxilary information
+[PTBR + 0] = 25;				//setting physical page number for logical page 0
+[PTBR + 1] = "01";				//setting auxiliary information for logical page 0
+
+[PTBR + 2] = 26;                                //setting physical page number for logical page 1
+[PTBR + 3] = "01";                              //setting auxiliary information for logical page 1
+
+[PTBR + 4] = 27;                                //setting physical page number for logical page 2
+[PTBR + 5] = "01";                              //setting auxiliary information for logical page 2
+
+[PTBR + 6] = 28;                                //setting physical page number for logical page 3(stack)
+[PTBR + 7] = "01";                              //setting auxiliary information for logical page 3(stack)
+
+[READY_LIST + 1] = 2;				//setting STATE of current process in running
+
+breakpoint;					//debugging the code
+
+SP = 3 * 512;					//setting value of SP as start of 3rd page in program
+						//it takes logical address
+
+[28 * 512] = 0;					//setting top of satck value to zero
+						//since IRET stores top of stack to IP
+						//IP is set to 0
+						//every logical address of instruction starts with 0
+						//28-the page of stack for init code is loaded
+
+breakpoint;					//debugging the code
+
+ireturn;

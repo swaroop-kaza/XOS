@@ -1,0 +1,129 @@
+alias Cause S0;
+alias BadVAddr S1;
+alias IPAddress S2;
+
+alias VPagenum S3;
+alias PhyPagenum S4;
+
+Cause = EFR % 10;					
+VPagenum = (EFR / 10) % 100;    	 
+IPAddress = (EFR / 1000);		
+
+alias physicalSP S11;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+if(Cause != 0) then
+	SP = SP + 1;
+	[physicalSP] = 10;
+	inline "JMP 11776";
+endif;
+
+PhyPagenum = [PTBR + VPagenum*2];
+if(PhyPagenum == -1) then
+	SP = SP + 1;
+	[physicalSP] = 10;
+	inline "JMP 11776";	
+endif;
+
+alias i S7;
+alias j S8;
+alias swapPageIndex S9;
+alias freePageIndex S10;
+alias counter S5;
+counter = 27;
+while(counter < 64) do
+	if([1280 + counter] == 0) then
+		freePageIndex = counter;
+		[1280 + counter] = 1;
+		break;
+	endif;
+	counter = counter+1;
+endwhile;
+
+breakpoint;
+if(counter == 64) then
+
+		i = PTBR - 32256;
+		j = i%256;
+		while(1) do
+			j = (i+2)%256;
+			while (i!=j) do
+				if (j % 10 == 8) then
+					j = (j + 2) % 256;
+					continue;
+				endif;
+
+				if ([32256 + j + 1] == "01") then
+					
+					if ([MEM_LIST + [32256 + j]] > 1) then					// page is shared	
+						j = (j + 2)%256;
+						continue;
+					endif;
+					
+
+					
+					swapPageIndex = 448;
+					while (swapPageIndex < 512) do
+						
+						if ([DISK_LIST + swapPageIndex] == 0) then
+							
+							store([32256 + j], swapPageIndex);
+							[DISK_LIST + swapPageIndex] = 1; 
+							freePageIndex = [32256 + j];
+							[32256 + j] = swapPageIndex;
+							[32256 + j + 1] = "00";
+							
+							break;						
+						endif;
+						
+						swapPageIndex = swapPageIndex + 1;
+					endwhile;
+						
+					if (swapPageIndex == 512) then
+						SP = SP + 1;
+						[physicalSP] = 10;
+						inline "JMP 11776";
+					endif;
+					
+					if (swapPageIndex != 512) then
+						break;
+					endif;					
+						
+				endif;
+				
+				if ([32256 + j + 1] == "11") then
+					[32256 + j + 1] = "01";
+				endif;
+				
+				j = (j + 2) % 256;		
+				
+			endwhile;
+
+			if(i!=j) then
+				break;
+			endif;
+
+		endwhile;	
+endif;
+
+breakpoint;
+
+if (PhyPagenum < 448) then
+	load(freePageIndex, PhyPagenum);
+endif;
+
+if (PhyPagenum >= 448) then
+	load (freePageIndex, PhyPagenum);
+	[DISK_LIST + PhyPagenum] = [DISK_LIST + PhyPagenum] - 1;
+endif;
+
+[PTBR + VPagenum * 2] = freePageIndex;
+[PTBR + VPagenum * 2 + 1] = "11";
+
+// increment SP by 1 and store IP value 
+SP = SP + 1;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+[physicalSP] = IPAddress;
+
+breakpoint;
+ireturn;

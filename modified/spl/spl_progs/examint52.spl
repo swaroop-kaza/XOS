@@ -1,0 +1,222 @@
+alias physicalSP S0;
+alias pid S1;
+alias returnvalue S2;
+alias temp S4;
+alias counter S5;
+alias freepcb S6;
+alias parentpcb S7;
+alias parentid S8;
+alias parentptbr S9;
+alias validpages S10;
+alias freepage S11;
+alias childptbr S12;
+alias count2 S13;
+alias childpcb S14;
+alias temp2 S3;
+alias sysindex S15;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+returnvalue=physicalSP-2;
+
+counter=0;
+
+while([READY_LIST+32*counter+1]!=0  && counter<32)
+do
+	counter=counter+1;
+endwhile;
+
+if(counter>=32)
+then
+	[returnvalue]=-1;
+	ireturn;
+endif;
+
+freepcb=counter;				//---------------------------counter is the child id--------------------- 
+
+[READY_LIST+32*counter+0]=counter;
+
+parentid=(PTBR-1024)/10;
+parentpcb=READY_LIST+(32*parentid);
+parentptbr=1024+(10*parentid);
+						
+temp=1472;
+freepage=0;
+
+while(temp<=1535)
+do
+
+if([temp+0]==0)					//------------------------ finding free page in memory list------------------------ 
+then
+	freepage=temp-1472;
+	[temp+0]=[temp+0]+1;
+	break;
+endif;
+	temp=temp+1;
+endwhile;
+
+if(freepage==0)
+then
+	temp=1024;
+
+while(2==2)
+do
+
+if(temp>1024+31*10+9)
+then
+	temp=1024;
+	continue;
+endif;
+
+pid= (temp-1024)/10;
+
+if(temp==1024+10*pid+8)
+then
+	temp=1024+10*(pid+1);
+	continue;
+endif;
+
+if([temp+1]=="11")
+then
+	[temp+1]="01";
+        temp=temp+2;
+        continue;
+endif;
+
+if([temp+1]=="01")
+then
+	if(([1472+[temp+0]])>1)
+	then
+		temp=temp+2;
+                continue;
+	else
+		alias victim S1;
+		victim=[temp+0];
+		temp2=448;
+		
+		while(temp2<=511)
+		do
+			if([DISK_LIST+temp2]==0)
+			then
+				[DISK_LIST+temp2]=[DISK_LIST+temp2]+1;
+				store(victim,temp2);
+				freepage=victim;
+				[temp+0]=temp2;
+				[temp+1]="00";
+				store(6,20);
+				break;
+			endif;
+                        temp2=temp2+1;
+		endwhile;
+		
+		if(temp2>511)
+		then
+			inline "JMP 11776";
+		endif;
+		
+		break;
+
+	endif;
+endif;
+temp=temp+2;
+endwhile;
+endif;
+
+childpcb=READY_LIST+freepcb*32;
+childptbr=1024+10*freepcb;
+
+counter=0;
+while(counter<4)
+do	
+	[childptbr+2*counter+0]=[parentptbr+2*counter+0];
+	[childptbr+2*counter+1]=[parentptbr+2*counter+1];
+
+if([childptbr+2*counter+1]=="01"||[childptbr+2*counter+1]=="11")
+then
+	[1472+[childptbr+2*counter+0]]=[1472+[childptbr+2*counter+0]]+1;
+endif;
+
+if([childptbr+2*counter+0]>=448)
+then
+	[DISK_LIST+[childptbr+2*counter+0]]=[DISK_LIST+[childptbr+2*counter+0]]+1;
+endif;
+	counter=counter+1;
+endwhile;
+
+[childptbr+8+0]=freepage;     				//----------updating stack field of child ptbr---------
+[childptbr+9+0]="01";
+
+counter=0;
+temp=freepage;
+temp2=[parentptbr+8+0];
+
+while(counter<512)					//--------copying parent stack page to child stack page----------
+do
+	[temp*512+counter]=[temp2*512+counter];
+	counter=counter+1;
+endwhile;
+
+[childpcb+0]=freepcb;
+[childpcb+1]=1;
+[childpcb+2]=BP;
+[childpcb+3]=SP-1;
+[childpcb+4]=[([PTBR+ 2 * (SP / 512)] * 512) + (SP % 512)]; 
+[childpcb+5]=childptbr;
+[childpcb+6]=5;
+[childpcb+7]=R0;					//--------copying the context of parentpcb to child process pcb--------------------
+[childpcb+8]=R1;
+[childpcb+9]=R2;
+[childpcb+10]=R3;
+[childpcb+11]=R4;
+[childpcb+12]=R5;
+[childpcb+13]=R6;
+[childpcb+14]=R7;
+[childpcb+31]=parentid;
+
+temp=0;
+
+while(temp<8)
+do							
+	[childpcb+15+2*temp]=[parentpcb+15+2*temp];
+	[childpcb+15+2*temp+1]=[parentpcb+15+2*temp+1];
+
+if([parentpcb+15+2*temp]!=-1)				//--------copying the perprocess open file table entries---------------
+then
+	sysindex=[parentpcb+15+2*temp];
+	temp2=FILE_TABLE+2*sysindex;
+	[temp2+1]=[temp2+1]+1;
+endif;
+
+	temp=temp+1;
+endwhile;
+
+[returnvalue]=[childpcb+0];
+
+alias newphysicalSP S15;			//------------------------child physical SP------------------------
+
+temp=SP-1;
+
+newphysicalSP=([childptbr+ 2 * (temp / 512)] * 512) + (temp % 512);
+[newphysicalSP-1]=-2;
+ireturn;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

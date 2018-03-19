@@ -1,0 +1,105 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias returnvalue S2;
+alias wordpos S3;
+alias temp S4;
+alias fatentry S5;
+alias freeblock S6;
+alias sysindex S7;	
+alias filesize S8;		
+alias currentPID S9;
+alias currentPCB S10;
+alias descriptor S12;
+alias lseek S13;
+alias basicblock S14;
+alias datablock S15;
+alias wordread S11;
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+sysCallNo=[physicalSP-1];
+returnvalue=physicalSP-2;
+descriptor=[physicalSP-4];
+
+currentPID=(PTBR-1024)/8;
+currentPCB=1536 + currentPID*32;
+
+//check validity of descripsampletor
+
+if(descriptor<0 || descriptor>=8)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+temp=currentPCB+15+2*descriptor;
+
+//check if file is present in per process  open file table
+
+if([temp+0]==-1)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+if(sysCallNo==6)
+then
+alias newlseek S11;
+newlseek=[physicalSP-3];
+sysindex=[temp+0];
+temp=FILE_TABLE+(sysindex*2);
+fatentry=[temp+0];
+
+temp=FAT+8*fatentry;
+filesize=[temp+1];
+
+if(newlseek<0 || newlseek>filesize)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+temp=currentPCB+15+2*descriptor;
+[temp+1]=newlseek;
+[returnvalue]=0;
+ireturn;
+endif;
+
+//READ system call
+
+if(sysCallNo==7)
+then
+wordread= physicalSP-3;
+sysindex=[temp+0];
+lseek=[temp+1];
+
+temp=FILE_TABLE+(sysindex*2);
+fatentry=[temp+0];
+temp=FAT+8*fatentry;
+
+basicblock=[temp+2];
+
+filesize=[temp+1];
+
+load(1,basicblock);
+
+if(lseek==filesize)
+then
+[returnvalue]=-1;
+
+ireturn;
+endif;
+
+datablock=(lseek/512);
+wordpos=(lseek%512);
+
+load(1,[512+datablock]);
+
+[wordread]=[512+wordpos];
+temp=currentPCB+15+2*descriptor+1;
+[temp]=[temp]+1;
+[returnvalue]=0;
+ireturn;
+endif;
+
+
+

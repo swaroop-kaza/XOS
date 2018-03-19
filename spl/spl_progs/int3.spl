@@ -1,0 +1,126 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias argument1 S2;
+alias argument2 S3;
+alias i S4;
+alias processID S5;
+alias PCB S6;
+alias SWOFTindex S7;
+alias FATindex S8;
+alias FileSize S9;
+alias LSEEK S10;
+alias BasicBlock S11;
+alias DataBlock S12;
+print("INT3");
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);		//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];					//storing system call number from stack
+argument1 = [physicalSP - 3];					//storing first argument from stack (new LSEEK position)
+								//for seek function call
+								//word that is read
+								//for read system call
+argument2 = [physicalSP - 4];					//storing second argument from stack (file descriptor)
+								//for both seek and read system call
+
+if( sysCallNo == 6) then					//code for seek
+
+	if( argument2<0 || argument2>7 ) then			//checking for valid file descriptor
+		print "INVALID FILE DESCRIPTOR";		//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	processID = (PTBR-1024)/8;				//caluclating the PID of current process
+								//PTBR base address of page table
+								//and each process occurs 8 words
+								//to know PID (PTBR-1024)/8
+	
+	PCB = READY_LIST + 32 * processID;			//READY_LIST where PCB starts
+								//to move on to current PCB 
+								//8 * PID
+	
+	if( [PCB + argument2*2 + 15] == -1  ) then		//checking pointer to system wide open file table
+		print "INVALID POINTER";			//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	SWOFTindex = [PCB + 15 + argument2*2];			//storing sysytem wide open file table index 
+	
+	FATindex = [FILE_TABLE + SWOFTindex*2];			//storing FAT entry of the file
+	FileSize = [FAT + FATindex*8 + 1];			//storing File size
+		
+	if( argument1 > FileSize ) then				//if given argument exceeds file size
+		print "INVALID SEEK";		 		//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	[PCB + 15 +argument2*2 + 1] = argument1;			//setting the value of new seek position
+
+	[physicalSP - 2] = 0;					//setting return value
+	
+	ireturn;
+
+endif;
+
+if( sysCallNo == 7) then					//code for read
+
+	if( argument2<0 || argument2>7 ) then			//checking for valid file descriptor
+		print "INVALID FILE DESCRIPTOR";		//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	processID = (PTBR-1024)/8;				//caluclating the PID of current process
+								//PTBR base address of page table
+								//and each process occurs 8 words
+								//to know PID (PTBR-1024)/8
+	
+	PCB = READY_LIST + 32 * processID;			//READY_LIST where PCB starts
+								//to move on to current PCB 
+								//8 * PID
+	
+	if( [PCB + 15 + argument2*2]==-1 ) then			//checking pointer to system wide open file table
+		print "INVALID POINTER TO SWOFT";		//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	SWOFTindex = [PCB + 15 +argument2*2];			//storing sysytem wide open file table index
+	LSEEK = [PCB + 15 + argument2*2 + 1];			//storing lseek position 
+	
+	FATindex = [FILE_TABLE + SWOFTindex*2];			//storing FAT entry of the file
+	
+	BasicBlock = [FAT + FATindex*8 + 2];			//finding basic block from FAT entry
+
+	if( LSEEK > FileSize ) then                        	 //if lseek exceeds file size
+                print "INVALID SEEK";                           //corresponding message
+                [physicalSP - 2] = -1;                          //storing return value
+                ireturn;
+        endif;
+
+	load(1,BasicBlock);					//loading basic block to scratchpad
+
+	DataBlock = [SCRATCHPAD + (LSEEK/512)];			//finding datablock using LSeek
+
+	load(1,DataBlock);					//loading data block to scratchpad for reading
+		
+	argument1 = [SCRATCHPAD + (LSEEK%512)];			//storing the value to be read in argument1
+
+	[PCB + 15 +argument2*2 + 1] = LSEEK + 1;		//incrementing LSEEK value
+
+	[physicalSP - 3] = argument1;				//storing word to read in stack
+	
+	[physicalSP - 2] = 0;					//storing return value
+
+	ireturn;
+
+endif;

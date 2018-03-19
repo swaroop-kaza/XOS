@@ -1,0 +1,105 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias returnvalue S2;
+alias word S3;
+alias temp S4;
+alias fatentry S5;
+alias freeblock S6;
+alias sysindex S7;	
+alias wordpos S8;		
+alias currentPID S9;
+alias currentPCB S10;
+alias descriptor S12;
+alias lseek S13;
+alias basicblock S14;
+alias datablock S15;
+
+
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+sysCallNo=[physicalSP-1];
+returnvalue=physicalSP-2;
+currentPID=(PTBR-1024)/8;
+currentPCB=1536 + currentPID*32;
+
+if(sysCallNo==5)
+then
+word= [physicalSP-3];
+descriptor=[physicalSP-4];
+
+//check validity of descriptor
+
+if(descriptor<0 || descriptor>=8)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+temp=currentPCB+15+2*descriptor;
+
+
+//check if file is present in per process  open file table
+
+if([temp+0]==-1)
+then
+[returnvalue]=-1;
+ireturn;
+endif;
+
+sysindex=[temp+0];
+lseek=[temp+1];
+
+temp=FILE_TABLE+(sysindex*2);
+fatentry=[temp+0];
+
+temp=FAT+fatentry*8;
+basicblock=[temp+2];
+
+load(1,basicblock);
+
+datablock=(lseek/512);
+freeblock=[512+datablock];
+
+wordpos=(lseek%512);
+
+if([512+datablock]==-1)
+then
+temp=24;
+while([DISK_LIST+temp]==1 && temp<448)
+do
+temp=temp+1;
+endwhile;
+
+if(temp==448)
+then
+[returnvalue]=-1;
+ireturn;
+else
+[DISK_LIST+temp]=1;
+[512+datablock]=temp;
+store(1,basicblock);
+endif;
+
+freeblock=temp;
+
+temp=FAT+fatentry*8;
+[temp+1]=[temp+1]+512;
+endif;
+
+
+load(1,freeblock);
+[512+wordpos]=word;
+
+store(1,freeblock);
+
+currentPID=(PTBR-1024)/8;
+currentPCB=1536 + currentPID*32;
+store(5,19);
+store(6,20);
+
+temp=currentPCB+15+2*descriptor;
+[temp+1]=[temp+1]+1;
+[returnvalue]=0;
+ireturn;
+endif;
+
+

@@ -1,0 +1,10 @@
+alias num S0;
+alias j S1;
+j=1;
+print "enter the num";
+read num;
+while(j<=num) do
+print j*j;
+j=j+1;
+endwhile;
+

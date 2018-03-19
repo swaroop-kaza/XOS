@@ -1,0 +1,181 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias i S2;
+alias argument S3;
+alias BasicBlock S4;
+alias CodeBlocks S5;
+alias CodePages S6;
+alias e S7;
+alias PID S8;
+alias PCB S9;
+alias SWOFT S10;
+print("INT6");
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);            //address translation of SP to get IP
+                                                                //that is to be stored
+                                                                //physical address = physical page no * 512 + offset
+                                                                //offset = sp % 512
+                                                                //physical page no = [location of pagetable + 0]
+                                                                //location of pagetable = PTBR + logical page number * 2
+                                                                //logical page number = logical address / 512
+                                                                //multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];                                   //storing system call number from stack
+
+argument = [physicalSP - 3];					//storing argument from stack
+//print("b");
+if( sysCallNo == 9) then
+	i=0;
+//print("c");						
+	while( i<64 && [FAT + i*8]!=argument ) do		//checking all the fat entries 
+								//whether file name exists or not
+		i=i+1;
+	endwhile;
+	
+	if( i==64 ) then					//if fie does not exist
+		print "NO FILE WITH GIVEN FILE NAME";		//error message
+		[physicalSP - 2] = -1;				//storing return value in stack
+		ireturn;	
+	endif;
+
+	BasicBlock = [FAT + i*8 + 2];				//getting basic block number from fat
+	load(1,BasicBlock);					//loading basic block to scratch pad
+//print("d");
+	CodeBlocks=0;						//accessing no of code blocks in file name given
+	i=0;
+	while( i<512 ) do					//checking scratchpad for occupied code blocks
+		if( [SCRATCHPAD + i] != -1 && [SCRATCHPAD + i] !="" ) then
+								//if value is not -1 and not empty space
+								//increment no of code blocks
+			CodeBlocks =CodeBlocks + 1;
+		endif;
+		i=i+1;
+	endwhile;
+
+	if(CodeBlocks > 3) then					//since xos do not permit more than three code blocks
+		print "CODE BLOCKS CAN NOT BE GREATER THAN 3";	//corresponding error message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+//print("e");
+	i=0;
+	CodePages=0;						//accessing code pages in memory
+	while( i<3 ) do						//checking code blocks of the current process
+		if( [PTBR + i*2] != -1) then			//if code blocks of currnet process exists
+			CodePages = CodePages + 1;		//increment code pages
+		endif;
+		i=i+1;
+	endwhile;
+//print("f");
+	i=2;							//always pages at the end should be removed
+	while( CodePages > CodeBlocks ) do			//if code pages are more than the code blocks
+								//code pages are to be modified to unused
+		while( i>=0 && [PTBR + i*2] == -1 ) do		//checking whether page is already unused
+			i=i-1;					//if unused go for next page
+		endwhile;
+		[PTBR + i*2] = -1;				//if not make it unused by physical page number
+		[PTBR + i*2 + 1] = "00";				//by auxilary information
+		CodePages = CodePages - 1;			//reduce code pages
+		i=i-1;
+	endwhile;
+//print("g");
+	if( CodePages < CodeBlocks ) then
+		e = CodeBlocks - CodePages;			//no of extra blocks
+		i=0;	
+		while( i<64 && e!=0 ) do			//checking in memory free list for free pages
+			if( [MEM_LIST + i] == 0 ) then		//if free page available
+				e=e-1;				//reduce extra blocks
+			endif;
+			i=i+1;
+		endwhile;
+
+		if( e!=0 ) then					//if free pages required are not enough
+			print "NO FREE PAGES IN MEMORY";	//corresponding error message
+			[physicalSP - 2] = -1;			//storing return value
+			ireturn ;
+		endif;
+
+		e=0;
+		i=0;
+		while( i<64 && CodePages < CodeBlocks ) do	//checking all memory free list for vacant pages
+			if( [MEM_LIST + i] == 0 ) then		//if vacant pages are available
+				[MEM_LIST + i] = 1;		//allocate it to new process
+								//checking all code blocks for the reffered
+				while( e<3 && [PTBR + e*2]!=-1 ) do
+								//if reffered then not need of new page 
+					e=e+1;
+				endwhile;
+				
+				[PTBR + e*2] = i;		//if not reffered then set that page to new page
+				[PTBR + e*2 + 1] = "01";	//set auxilary information in page table
+				
+				CodePages = CodePages +1;
+
+				e=e+1;
+			endif;
+			i=i+1;
+		endwhile;
+	endif;
+//print("h");
+	e=0;
+	i=0;
+
+	while( e<CodeBlocks && i<512 ) do			//loading all the code blocks of 
+								//the new process to memory
+								//that it has been allocated before
+		if( [SCRATCHPAD + i] != -1 && [SCRATCHPAD + i] !="" ) then
+								//checking whether the basic block contains 
+								//any data blocks or not
+			load([PTBR + e*2] , [SCRATCHPAD + i]);
+			e=e+1;
+		endif;
+		i=i+1;
+	endwhile;
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR of current
+								//process whichh would be same for new process
+
+	PCB = READY_LIST + PID*32;				//caluculating PCB from PID
+//print("i");
+	i=15;							
+	while( i<31 ) do					//checking per process open file table
+		if( [PCB + i] != -1) then			//checking for the opend file 
+			SWOFT = FILE_TABLE + [PCB + i]*2;	//getting system wide open file table 
+								//index of the corresponding file
+			[SWOFT + 1] = [SWOFT + 1] -1;		//decrementing opend files in 
+								//system wide open file table
+			if( [SWOFT + 1] == 0 ) then		//if no of opend file are 0 then 
+								//remove its link to FAT
+				[SWOFT] = -1;
+			endif;			
+			[PCB + i] = -1;				//setting pointer to system wide open file table 
+								//to -1 indicating no pointer
+			[PCB + i + 1] = -1;			//setting LSEEK position to unreffered
+		endif;
+		i=i+2;
+	endwhile;
+
+	SP = 3*512;						//setting SP value to top of stack
+//print("j");
+	[[PTBR + 6] * 512] = 0;					//for setting IP to 0 after ireturn
+
+	ireturn;
+endif;
+
+if( sysCallNo == 11 ) then
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR of current
+								//process whichh would be same for new process
+
+	[physicalSP - 2] = PID;					//storing return value
+	
+	ireturn;
+endif;
+
+if( sysCallNo == 12 ) then
+	PID = (PTBR - 1024)/8;					//calculating PID from PTBR of current
+								//process whichh would be same for new process
+
+	PCB = READY_LIST + PID*32;				//caluculating PCB from PID
+
+	[physicalSP - 2] = [PCB + 31];				//storing return value
+
+	ireturn ;
+endif;

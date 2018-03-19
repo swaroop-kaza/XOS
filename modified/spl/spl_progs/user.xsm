@@ -1,0 +1,10 @@
+START 
+MOV R0, "get in" 
+OUT R0 
+INT 3
+
+MOV R0, "get out" 
+OUT R0
+
+INT 3
+END

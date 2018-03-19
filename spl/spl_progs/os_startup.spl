@@ -1,0 +1,139 @@
+alias i S0;
+alias PID S1;
+alias PCB S2;
+print("OS_STARTUP");
+load(5,19);                                     //loading FAT data structure from disk to memory
+
+load(6,20);                                     //loading disk free list from disk to memory
+
+load(7,1);					//loading exhandler from disk to memory
+load(8,2);
+
+load(9,3);                                      //loading timer interrupt routine from disk to memory
+load(10,4);
+
+load(11,5);					//loading interrupt 1 routine from disk to memory
+load(12,6);
+
+load(13,7);					//loading interrupt 2 routine from disk to memory
+load(14,8);
+
+load(15,9);					//loading interrupt 3 routine from disk to memory
+load(16,10);
+
+load(17,11);					//loading interrupt 4 routine from disk to memory
+load(18,12);	
+
+load(19,13);					//loading interrupt 5 routine from disk to memory
+load(20,14);
+
+load(21,15);					//loading interrupt 6 routine from disk to memory
+load(22,16);
+
+load(23,17);                                    //loading interrupt 7 routine from disk to memory
+load(24,18);
+
+//load(25,21);                                  //load init code first page from disk to memory
+//load(26,22);                                  //load init code second page from disk to memory
+//load(27,23);                                  //load init code third page from disk to memory
+//no need to load init code because of demand paging
+
+
+[READY_LIST + 0] = 0;				//sets the entry for PID as 0
+						//from 1536 + (PID * 32) we can get ready list for process of given PID 
+						//default of READY_LIST is 1536
+						//as PID of init is set to be zero  
+
+PTBR = 1024;					//setting per process page table for init
+						//from PTBR = 1024 + (PID * 8)
+						//here for init PID=0
+
+PTLR = 4;					//every process in XOS has length as 4
+
+						//process takes 4 pages
+						//each page pagetable has to be set
+						//first part of page table contain physical address 
+						//corresponding to logical address
+						//second part auxilary information
+[PTBR + 0] = 21;				//setting physical page number for logical page 0
+[PTBR + 1] = "00";				//setting auxiliary information for logical page 0
+
+[PTBR + 2] = 22;                                //setting physical page number for logical page 1
+[PTBR + 3] = "00";                              //setting auxiliary information for logical page 1
+
+[PTBR + 4] = 23;                                //setting physical page number for logical page 2
+[PTBR + 5] = "00";                              //setting auxiliary information for logical page 2
+
+[PTBR + 6] = 25;                                //setting physical page number for logical page 3(stack)
+[PTBR + 7] = "01";                              //setting auxiliary information for logical page 3(stack)
+
+
+
+
+[READY_LIST + 1] = 2;				//setting STATE of init in running in page table
+
+SP = 3 * 512;					//setting value of SP as start of 3rd page in program
+						//it takes logical address
+
+[28 * 512] = 0;					//setting top of satck value to zero
+						//since IRET stores top of stack to IP
+						//IP is set to 0
+						//every logical address of instruction starts with 0
+						//28-the page of stack for init code is loaded
+
+PID = (PTBR - 1024)/8;				//calculating PID from PTBR of init
+						//process whichh would be same for new process
+
+PCB = READY_LIST + PID*32;			//caluculating PCB from PID
+[PCB + 31] = 0;					//storing parent pid of init to 0				
+
+
+i=0;
+while( i<128 ) do				//maximum system wide open file tables are 128
+	[FILE_TABLE + i + 0] = -1;		//all FAT index entries are set to invalid
+	[FILE_TABLE + i + 1] = 0;		//no of file opened initally 0
+	i=i+2;
+endwhile;
+
+i=0;
+while( i<8 ) do					//max per process open file table are 8
+	[READY_LIST + 15 + 2*i] = -1;		//pointer to system wide open file table
+						//invalid since process still not started
+	[READY_LIST + 16 + 2*i] = -1;		//LSEEK position also invalid
+	i=i+1;
+endwhile;
+
+i=0;
+while( i<26 ) do				//setting memory free list 
+						//utill 28 pages as used
+						//because of init,os_startup,interrupts,FAT,diskfreelist,ROM,exhandler
+						//memory free list,system wide open file table, PCB
+	[MEM_LIST + i] = 1;
+	i=i+1;
+endwhile;
+
+while( i<64 ) do				//setting memory free list
+						//of remaining pages as 0
+						// indicating as unused
+	[MEM_LIST + i] = 0;
+	i=i+1;
+endwhile;
+
+i=448;						//DISK Swap area
+while( i<512 ) do				//initalising disk free list to zero
+	[DISK_LIST + i] = 0;
+	i=i+1;
+endwhile;
+
+store(6,20);					//storing disk free list back to disk from mwmory
+
+
+i=1;
+while( i<32 ) do				//setting all PCB STATES to 0
+						//indicating that PCB is not yet allocated
+	[READY_LIST + i*32 + 1] = 0;
+	i=i+1;
+endwhile;
+
+
+ireturn;

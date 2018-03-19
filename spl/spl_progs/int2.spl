@@ -1,0 +1,151 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias argument S2;
+alias i S3;
+alias FATindex S4;
+alias SWOFTindex S5;
+alias processID S6;
+alias PCB S7;
+print("INT2");
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);		//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];					//storing system call number from stack
+argument = [physicalSP - 3];					//storing argument from stack
+
+if( sysCallNo == 2) then					//code for open
+
+	i=0;	
+	while( i<64 && [FAT + i*8]!=argument ) do		//checking for file in FAT
+								//maximum no of FAT entries 64
+		i=i+1;
+	endwhile;
+
+	if( i==64 ) then					//FAT entry of the file not found
+		print "FILE DOESN'T EXIST";			//corresponding message
+		[physicalSP - 2] = -1;				//storing return value in the stack					
+		ireturn;
+	endif;
+
+	FATindex = i;						//storing FAT index
+	
+	i=0;	
+	while( i<64 && [FILE_TABLE + i*2]!=FATindex ) do	//checking wether file already opened
+								//checking every system wide open file table
+								//max entries in system wide open file table is 64
+		i=i+1;
+	endwhile;
+
+	if( i==64 ) then					//file not opened before
+		
+		i=0;
+		while( i<64 && [FILE_TABLE + i*2]!=-1 ) do	//finding a free entry in system wide open file table
+			i=i+1;
+		endwhile;
+		
+		if( i==64 ) then				//no free entry in system wide open file table
+			print "FILE TABLE IS FULL";		//corresponding message
+			[physicalSP - 2] = -1;			//storing return value
+			ireturn;
+		endif;
+		
+		SWOFTindex = i;
+	
+	else
+		SWOFTindex = i;					//storing index of opened file
+
+	endif;
+
+	processID = (PTBR-1024)/8;				//caluclating the PID of current process
+								//PTBR base address of page table
+								//and each process occurs 8 words
+								//to know PID (PTBR-1024)/8
+	
+	PCB = READY_LIST + 32 * processID;			//READY_LIST where PCB starts
+								//to move on to current PCB 
+								//8 * PID
+
+	i=0;
+	while( i<8 && [PCB + 15 + 2*i]!=-1 ) do			//checking for free entry in
+								//per process open file table
+								//15th word of PCB starts with 
+								//per process open file table
+								//2 words long for per process open file table
+		i=i+1;
+
+	endwhile;
+		
+	if( i==8 ) then						//no free entry
+		print "NO FREE ENTRY IN PER PROCESS PAGETABLE";	//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+	
+	[PCB + i*2 + 15] = SWOFTindex;				//storing system wide open file table index in PCB
+	[PCB + i*2 + 16] = 0;					//storing LSEEK of PCB
+
+	[FILE_TABLE + SWOFTindex*2] = FATindex;			//storing FAT index in system wide open file table
+	[FILE_TABLE + SWOFTindex*2 +1] = [FILE_TABLE + SWOFTindex*2 +1] + 1;
+								//increasing the value of opened files in
+								//system wide open file table
+	
+	[physicalSP - 2] = i;					//storing the return value
+	
+	ireturn;
+
+endif;
+
+if( sysCallNo == 3 ) then					//code for close
+
+	if( argument <0 && argument >7 ) then			//checking validity of file descriptor
+								//since index of per process open file table
+								//its range is 0to7
+		print "INVALID FILE DESCRIPTOR";		//corrseponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	processID = (PTBR-1024)/8;                              //caluclating the PID of current process
+                                                                //PTBR base address of page table
+                                                                //and each process occurs 8 words
+                                                                //to know PID (PTBR-1024)/8
+
+        PCB = READY_LIST + 32 * processID;                      //READY_LIST where PCB starts
+                                                                //to move on to current PCB
+                                                                //8 * PID
+
+	if( [PCB + argument*2 + 15] == -1 ) then		//system wide open file table is invalid
+		print "NO SWOFT ENTRY";				//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+	
+	FATindex = FILE_TABLE + [PCB + argument*2 + 15]*2;	//pointer to system wide open file table
+	
+	if( [FATindex] == -1) then				//checking validity of FAT index
+		print "INVALID FAT ENTRY";			//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;				
+	endif;
+	
+	[FATindex + 1] = [FATindex + 1] - 1;			//decreasing count of open files
+	
+	if( [FATindex + 1] == 0) then				//checking if this is the only opened file
+		[FATindex] = -1;				//FAT index is then invalid
+	endif;
+	
+	[PCB + argument*2 + 15] = -1;				//invalidity of per process open page table 
+								//pointer to SWOFT invalidity
+	[PCB + argument*2 + 16] = -1;				//LSEEK invalidity
+
+	[physicalSP - 2] = 0;					//storing return value 
+	
+	ireturn;
+
+endif; 

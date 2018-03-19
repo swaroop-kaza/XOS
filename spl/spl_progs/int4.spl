@@ -1,0 +1,99 @@
+alias physicalSP S0;
+alias sysCallNo S1;
+alias argument1 S2;
+alias argument2 S3;
+alias i S4;
+alias processID S5;
+alias PCB S6;
+alias SWOFTindex S7;
+alias LSEEK S8;
+alias FATindex S9;
+alias BasicBlock S10;
+alias DataBlock S11;
+print("INT4");
+physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);		//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+sysCallNo = [physicalSP - 1];					//storing system call number from stack
+argument1 = [physicalSP - 3];					//storing first argument from stack (word to write)
+argument2 = [physicalSP - 4];					//storing second argument from stack (file descriptor)
+
+if( sysCallNo == 5) then					//code for write
+
+	if( argument2<0 || argument2>7 ) then			//checking for valid file descriptor
+		print "INVALID FILE DESCRIPTOR";		//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	processID = (PTBR-1024)/8;				//caluclating the PID of current process
+								//PTBR base address of page table
+								//and each process occurs 8 words
+								//to know PID (PTBR-1024)/8
+	
+	PCB = READY_LIST + 32 * processID;			//READY_LIST where PCB starts
+								//to move on to current PCB 
+								//8 * PID
+	
+	if( [PCB + 15 + argument2*2]==-1 ) then			//checking pointer to system wide open file table
+		print "INVALID POINTER TO SWOFT";		//corresponding message
+		[physicalSP - 2] = -1;				//storing return value
+		ireturn;
+	endif;
+
+	SWOFTindex = [PCB + 15 +argument2*2];			//storing sysytem wide open file table index
+	LSEEK = [PCB + 15 + argument2*2 + 1];			//storing lseek position 
+	
+	FATindex = [FILE_TABLE + SWOFTindex*2];			//storing FAT entry of the file
+	
+	BasicBlock = [FAT + FATindex*8 + 2];			//finding basic block from FAT entry
+
+	load(1,BasicBlock);					//loading basic block to scratchpad
+
+	DataBlock = [SCRATCHPAD + (LSEEK/512)];			//finding datablock using LSeek
+	
+	if( DataBlock==-1 ) then				//if the required datablock is not a free block in disk
+		i=24;
+		while( i<448 && [DISK_LIST + i]!=0 ) do		//check all user data blocks which are free
+			i=i+1;
+		endwhile;
+	
+		if( i==448 ) then				//if all user blocks are occupied
+			print "NO BLOCK TO WRITE";		//corresponding message
+			[physicalSP - 2] = -1;			//storing return value	
+			ireturn;
+		endif;
+
+		[DISK_LIST + i] = 1;				//marking DiskFreeList used for the data block used
+		
+		DataBlock = i;					//storing data block addresss
+	
+		[SCRATCHPAD + (LSEEK/512)] = i;			//modifing in the basic block 	
+		store(1,BasicBlock);				//loading modified basic block from scrach pad
+		[FAT + FATindex*8 + 1] = [FAT + FATindex*8 + 1] + 512;	
+								//increasing file size by 512
+		
+		store(5,19);					//storing modified FAT 
+		store(6,20);					//storing modified disk free list 
+	
+	endif;
+	
+	load(1,DataBlock);					//loading the data block that is to be modified
+	
+	[SCRATCHPAD + (LSEEK%512)] = argument1;			//writing in LSEEK position with word 
+								//that is to be written
+	store(1,DataBlock);					//storing back the data block
+	
+	[PCB + 15 + argument2*2 + 1] = LSEEK + 1;		//incrementing lseek
+	
+	[physicalSP - 2] = 0;					//storing return value
+	
+	ireturn;
+
+endif;

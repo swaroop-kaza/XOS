@@ -1,0 +1,32 @@
+
+//interrupt7
+load(23,17); 
+load(24,18);
+
+
+//exhandler
+load(7,1);  
+load(8,2);
+
+
+[READY_LIST + 0] = 0;
+ 
+load(25,25);	// Load 1st page of code from disk to memory
+
+PTBR = 1024;
+PTLR = 4;
+
+[PTBR + 0] = 25; // Physical Page Number for Logical Page 0
+[PTBR + 1] = "01"; // Auxiliary Information for Logical Page 0
+[PTBR + 2] = -1; // Physical Page Number for Logical Page 0
+[PTBR + 3] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 4] = -1; // Physical Page Number for Logical Page 0
+[PTBR + 5] = "00"; // Auxiliary Information for Logical Page 0
+[PTBR + 6] = 26; // Physical Page Number for Logical Page 0
+[PTBR + 7] = "01"; // Auxiliary Information for Logical Page 0
+
+
+SP = 3 * 512;
+[26 * 512] = 0;
+
+ireturn;

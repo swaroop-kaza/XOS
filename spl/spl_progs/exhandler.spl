@@ -1,0 +1,171 @@
+alias cause S0;
+alias vpagenum S1;
+alias ip_addr S2;
+alias physicalSP S3;
+alias i S4;
+alias pgnum S5;
+alias j S6;
+
+print("EXHANDLER");
+
+cause = EFR%10;							//calculating cause from EFR
+vpagenum = (EFR/10)%100;					//calculating vpagenum from EFR
+ip_addr = EFR/1000;						//calculating ip_address from EFR
+//print("1");
+if( cause !=0 ) then						//if cause is not 0 it is not pagefault
+	if( cause == 1 ) then					//if cause is 1 then illegal instruction
+		print("Illegal Instruction");			//corresponding error message
+	endif;
+
+	if( cause == 2 ) then					//if cause is 2 then illegal memory
+		print("Illegal Memory");
+	endif;
+
+	if( cause == 3 ) then					//if cause is 3 then arithematic
+		print("Division by zero");
+	endif;
+
+	if( cause == 4) then					//if cause is 4 illegal operands
+		print("Illegal operands");
+	endif;
+
+	SP=SP+1;						//creating space for system call number
+
+	physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);	//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+	[physicalSP - 1] = 10;					//since we are calling for exit system call 
+								//10 stored as system call number
+	inline "JMP 11776";					//jumps to int7
+
+endif;
+//print("2");
+if( cause==0 ) then
+						
+	if( [PTBR + vpagenum*2 ] == -1 ) then			//if physicalpagenumber is invalid
+		print ("Invalid Vpage");			//corresponding error	
+	
+		SP=SP+1;					//creating space for system call number
+	
+		physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);
+								//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+		[physicalSP - 1] = 10;				//since we are calling for exit system call 
+								//10 stored as system call number
+		inline "JMP 11776";				//jumps to int7
+	endif;
+
+	i=0;
+	while( i<64 && [MEM_LIST + i] !=0 ) do			//checking memory to allocate a page
+		i=i+1;
+	endwhile;
+
+	if( i<64 ) then
+		[MEM_LIST + i] = 1;				//if free page allocate it
+		pgnum=i;
+	else
+		i = PTBR + vpagenum*2;				//no free page page replacement 
+		while(1) do					//page replacement algorithm
+				
+			if( i > PAGE_TABLE + 256 ) then		//if exceeds page table
+				i = PAGE_TABLE;			//restore page table start
+			endif;
+
+			if( (i+2)%8 == 0) then			//scipking stack
+				i=i+2;
+				continue;
+			endif;
+
+			if( [i + 1]=="01" || [i + 1]=="00") then
+								//page with reference bit 0 is selected
+				if([MEM_LIST + [i]] == 1) then
+								//setting memory free list to one
+					pgnum = [i];		//storing page 
+								//this occur in default paging
+					break;
+				endif;
+			endif;
+
+			if([i + 1] == "11") then		//if it is reffered then make it unreffered
+				[i + 1] = "01";
+			endif;
+			i=i+2;
+		endwhile;
+
+		j=448;
+		while( j<512 ) do				//finding a free block in swap space
+			if( [DISK_LIST + j] == 0 ) then
+				[DISK_LIST + j] = 1;		//assing the disk free list to page number
+								//found initally
+				store(pgnum,j);			//store page in swap
+
+				[i] = j;			//this swap block number is stored as page table 
+								
+				[i + 1] = "00";			//auxilary information is also stored
+
+				store(6,20);			//restoring disk free list
+				break;
+			endif;
+			j=j+1;
+		endwhile;
+
+		if( j>=512 ) then				//if no space in swap area then
+			print("NO FREESWAP");			//corresponding error
+			SP=SP+1;				//creating space for system call number
+	
+			physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);
+								//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+
+			[physicalSP - 1] = 10;			//since we are calling for exit system call 
+								//10 stored as system call number
+			inline "JMP 11776";			//jumps to int7
+		endif;
+	endif;
+
+	if( [PTBR + vpagenum*2] < 448) then			//if loading from disk free list
+		j = [PTBR + vpagenum*2];			//storing page number
+		load(pgnum,j);					//loading page number from corresponding page
+	else
+		j = [PTBR + vpagenum*2];			//if loading from swap
+		load(pgnum,j);
+		[DISK_LIST + j] = [DISK_LIST + j] - 1;		//decrementing disk free list
+		store(6,20);					//restoring disk free list 
+	endif;
+
+	[PTBR + vpagenum*2] = pgnum;				//stroing in page table
+	[PTBR + vpagenum*2 + 1] = "11";				
+	
+	SP=SP+1;						//creating space for IP
+
+	physicalSP = ([PTBR + 2*(SP/512)] * 512) + (SP%512);	//address translation of SP to get IP
+								//that is to be stored
+								//physical address = physical page no * 512 + offset
+								//offset = sp % 512
+								//physical page no = [location of pagetable + 0]
+								//location of pagetable = PTBR + logical page number * 2
+								//logical page number = logical address / 512
+								//multiply by 2 because of 2 entries in page table
+	[physicalSP] = ip_addr;					//stroing IP address
+
+	ireturn;
+endif;

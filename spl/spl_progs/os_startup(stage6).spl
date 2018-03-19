@@ -1,0 +1,111 @@
+alias PTBR_process1 S0;
+
+
+
+load(7,1);					//loading exhandler from disk to memory
+load(8,2);
+
+load(23,17);					//loading interrupt 7 routine from disk to memory
+load(24,18);
+
+load(11,5);					//loading interrupt 1 routine from disk to memory
+load(12,6);	
+
+load(9,3);					//loading timer interrupt routine from disk to memory
+load(10,4);				
+
+
+
+[READY_LIST + 0] = 0;				//sets the entry for PID as 0
+						//from 1536 + (PID * 32) we can get ready list for process of given PID 
+						//default of READY_LIST is 1536
+						//as PID of init is set to be zero  
+
+[READY_LIST + 32] = 1;				//sets the entry for PID as 1 
+						//for the exec process			
+
+
+
+load(25,21);					//load init code first page from disk to memory	
+load(26,22);					//load init code second page from disk to memory
+load(27,23);					//load init code third page from disk to memory
+
+load(29,25);					//load the exec code from disk to memory
+
+
+
+
+PTBR = 1024;					//setting per process page table for init
+						//from PTBR = 1024 + (PID * 8)
+						//here for init PID=0
+
+PTBR_process1 = 1024 + 1*8;			//setting per process page table for process 1
+						//here PID=1
+
+PTLR = 4;					//every process in XOS has length as 4
+
+
+
+						//process takes 4 pages
+						//each page pagetable has to be set
+						//first part of page table contain physical address 
+						//corresponding to logical address
+						//second part auxilary information
+[PTBR + 0] = 25;				//setting physical page number for logical page 0
+[PTBR + 1] = "01";				//setting auxiliary information for logical page 0
+
+[PTBR + 2] = 26;                                //setting physical page number for logical page 1
+[PTBR + 3] = "01";                              //setting auxiliary information for logical page 1
+
+[PTBR + 4] = 27;                                //setting physical page number for logical page 2
+[PTBR + 5] = "01";                              //setting auxiliary information for logical page 2
+
+[PTBR + 6] = 28;                                //setting physical page number for logical page 3(stack)
+[PTBR + 7] = "01";                              //setting auxiliary information for logical page 3(stack)
+
+						//auxilary innformation of only first page is valid
+						//since data block occupies only one block
+[PTBR_process1 + 0] = 29;			//setting physical page number for logical page 0 for process1
+[PTBR_process1 + 1] = "01";			//setting auxilary information for logical page 0 for process1
+
+[PTBR_process1 + 2] = -1;                       //setting physical page number for logical page 1 for process1
+[PTBR_process1 + 3] = "00";                     //setting auxilary information for logical page 1 for process1
+
+[PTBR_process1 + 4] = -1;                       //setting physical page number for logical page 2 for process1
+[PTBR_process1 + 5] = "00";                     //setting auxilary information for logical page 2 for process1
+
+[PTBR_process1 + 6] = 30;                       //setting physical page number for logical page 3 for process1
+[PTBR_process1 + 7] = "01";                     //setting auxilary information for logical page 3 for process1
+						//stack for process 1
+
+
+
+[READY_LIST + 1] = 2;				//setting STATE of init in running in page table
+
+[READY_LIST + 33] = 1;				//setting STATE of process1 in ready in page table
+
+[READY_LIST + 37] = PTBR_process1;		//setting PTBR of process1 in page table
+
+[READY_LIST + 38] = PTLR;			//setting PTLR of process1 in page table
+
+//breakpoint;					//debugging the code
+
+SP = 3 * 512;					//setting value of SP as start of 3rd page in program
+						//it takes logical address
+
+[READY_LIST + 34] = 3 * 512;			//setting value of BP as start of 3rd page for process1
+
+[READY_LIST + 35] = 3 * 512;			//setting value of SP as start of 3rd page for process1
+
+[28 * 512] = 0;					//setting top of satck value to zero
+						//since IRET stores top of stack to IP
+						//IP is set to 0
+						//every logical address of instruction starts with 0
+						//28-the page of stack for init code is loaded
+
+[READY_LIST + 36] = 0;				//setting IP of process1
+						//as it takes first instruction therefore it is 0
+
+//breakpoint;					//debugging the code
+
+ireturn;

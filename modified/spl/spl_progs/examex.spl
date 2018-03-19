@@ -1,0 +1,139 @@
+alias cause 	S0;
+alias vpagenum  S1;
+alias ip 	S2;
+alias freepage  S3;
+alias temp 	S4;
+alias temp2     S5;
+alias count 	S6;      
+alias pid	S7;
+alias victim 	S8;
+alias phypage	S9;
+alias physp	S10;
+
+
+cause	 =	EFR%10;				//-------step1-----
+vpagenum =	(EFR/10)%100;
+ip	 =	EFR/1000;
+
+if(cause!=0)      				//-------step2-----
+then			
+print "cause is";
+print cause;
+inline "JMP 11776";
+endif;
+
+if([PTBR+2*vpagenum]==-1)                  	//-------step3------
+then
+inline "JMP 11776";
+endif;
+
+temp=MEM_LIST;
+
+while(temp<=1343)
+do
+if([temp+0]==0)
+then
+	[temp+0]=1;
+	freepage=temp-1280;
+	break;
+endif;
+	temp=temp+1;
+endwhile;
+
+if(temp>1343)
+then
+temp=PTBR+2*vpagenum;
+
+while(2==2)
+do
+
+if(temp>=1274)
+then
+	temp=1024;
+	continue;
+endif;
+
+pid= (temp-1024)/10;
+
+if(temp==1024+10*pid+8)
+then
+	temp=1024+10*(pid+1);
+	continue;
+endif;
+
+if([temp+1]=="11")
+then
+	[temp+1]="01";
+        temp=temp+2;
+        continue;
+endif;
+
+if([temp+1]=="01")
+then
+	if(([MEM_LIST+[temp+0]])>1)
+	then
+		temp=temp+2;
+                continue;
+	else
+		victim=[temp+0];
+		temp2=448;
+		
+		while(temp2<=511)
+		do
+			if([DISK_LIST+temp2]==0)
+			then
+				[DISK_LIST+temp2]=[DISK_LIST+temp2]+1;
+				store(victim,temp2);
+				freepage=victim;
+				[temp+0]=temp2;
+				[temp+1]="00";
+				store(6,20);
+				break;
+			endif;
+                        temp2=temp2+1;
+		endwhile;
+		
+		if(temp2>511)
+		then
+			inline "JMP 11776";
+		endif;
+		
+		break;
+
+	endif;
+endif;
+temp=temp+2;
+endwhile;
+endif;
+
+phypage=[PTBR+2*vpagenum];
+
+		if(phypage>=21 && phypage<=447)
+		then
+			load(freepage,phypage);
+		else
+			load(freepage,phypage);
+			[DISK_LIST+phypage]=[DISK_LIST+phypage]-1;
+		endif;
+store(6,20);
+[PTBR+2*vpagenum]=freepage;
+[PTBR+2*vpagenum+1]="11";
+SP=SP+1;
+
+physp=[PTBR+2*(SP/512)]*512+SP%512;
+[physp]=ip;
+
+
+ireturn;
+
+
+
+
+
+
+
+
+
+
+
+
